@@ -300,16 +300,42 @@ export const transformGeminiToolParameters = (
   return transformNode(schema);
 };
 
-// Vertex AI does not support certain JSON Schema properties
-// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
+/**
+ * Vertex AI does not support certain JSON Schema properties.
+ * This function recursively removes unsupported properties from the schema.
+ * @see https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
+ */
 export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+  // Remove unsupported JSON Schema properties
   delete obj.additional_properties;
   delete obj.additionalProperties;
   delete obj['$schema'];
-  // Remove JSON Schema validation keywords not supported by Vertex AI
+  delete obj['$id'];
+  // Remove unsupported numeric validation properties
   delete obj.exclusiveMinimum;
   delete obj.exclusiveMaximum;
+  // Remove unsupported object validation properties
+  delete obj.patternProperties;
+  delete obj.unevaluatedProperties;
+  delete obj.propertyNames;
+  delete obj.minProperties;
+  delete obj.maxProperties;
+  // Remove unsupported array validation properties
+  delete obj.unevaluatedItems;
+  delete obj.contains;
+  delete obj.minContains;
+  delete obj.maxContains;
+  delete obj.uniqueItems;
+  // Remove unsupported string validation properties
+  delete obj.contentEncoding;
+  delete obj.contentMediaType;
+  // Remove unsupported conditional properties
+  delete obj.if;
+  delete obj.then;
+  delete obj.else;
+  delete obj.dependentSchemas;
+  delete obj.dependentRequired;
   for (const key in obj) {
     if (obj[key] !== null && typeof obj[key] === 'object') {
       recursivelyDeleteUnsupportedParameters(obj[key]);

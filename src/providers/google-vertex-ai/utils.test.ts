@@ -758,4 +758,124 @@ describe('recursivelyDeleteUnsupportedParameters', () => {
     expect(() => recursivelyDeleteUnsupportedParameters(123)).not.toThrow();
     expect(() => recursivelyDeleteUnsupportedParameters([])).not.toThrow();
   });
+
+  it('removes $id property from schema', () => {
+    const schema = {
+      $id: 'https://example.com/schema',
+      type: 'object',
+      properties: {
+        item: {
+          $id: 'https://example.com/item',
+          type: 'string',
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any)['$id']).toBeUndefined();
+    expect((schema.properties.item as any)['$id']).toBeUndefined();
+  });
+
+  it('removes unsupported object validation properties', () => {
+    const schema = {
+      type: 'object',
+      patternProperties: { '^S_': { type: 'string' } },
+      unevaluatedProperties: false,
+      propertyNames: { pattern: '^[A-Za-z_][A-Za-z0-9_]*$' },
+      minProperties: 1,
+      maxProperties: 10,
+      properties: {
+        name: { type: 'string' },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).patternProperties).toBeUndefined();
+    expect((schema as any).unevaluatedProperties).toBeUndefined();
+    expect((schema as any).propertyNames).toBeUndefined();
+    expect((schema as any).minProperties).toBeUndefined();
+    expect((schema as any).maxProperties).toBeUndefined();
+    expect(schema.properties.name.type).toBe('string');
+  });
+
+  it('removes unsupported array validation properties', () => {
+    const schema = {
+      type: 'array',
+      items: { type: 'string' },
+      unevaluatedItems: false,
+      contains: { type: 'string', pattern: '^special' },
+      minContains: 1,
+      maxContains: 5,
+      uniqueItems: true,
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).unevaluatedItems).toBeUndefined();
+    expect((schema as any).contains).toBeUndefined();
+    expect((schema as any).minContains).toBeUndefined();
+    expect((schema as any).maxContains).toBeUndefined();
+    expect((schema as any).uniqueItems).toBeUndefined();
+    expect(schema.items).toEqual({ type: 'string' });
+  });
+
+  it('removes unsupported string validation properties', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        encoded: {
+          type: 'string',
+          contentEncoding: 'base64',
+          contentMediaType: 'image/png',
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema.properties.encoded as any).contentEncoding).toBeUndefined();
+    expect((schema.properties.encoded as any).contentMediaType).toBeUndefined();
+    expect(schema.properties.encoded.type).toBe('string');
+  });
+
+  it('removes conditional schema properties', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        country: { type: 'string' },
+        postal_code: { type: 'string' },
+      },
+      if: { properties: { country: { const: 'USA' } } },
+      then: { properties: { postal_code: { pattern: '[0-9]{5}' } } },
+      else: { properties: { postal_code: { pattern: '.*' } } },
+      dependentSchemas: { credit_card: { required: ['billing_address'] } },
+      dependentRequired: { credit_card: ['billing_address'] },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).if).toBeUndefined();
+    expect((schema as any).then).toBeUndefined();
+    expect((schema as any).else).toBeUndefined();
+    expect((schema as any).dependentSchemas).toBeUndefined();
+    expect((schema as any).dependentRequired).toBeUndefined();
+  });
+
+  it('recursively removes unsupported properties from nested anyOf', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          anyOf: [
+            {
+              type: 'number',
+              exclusiveMinimum: 0,
+              additionalProperties: false,
+            },
+            {
+              type: 'string',
+              contentEncoding: 'base64',
+            },
+          ],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    const anyOf = schema.properties.value.anyOf;
+    expect((anyOf[0] as any).exclusiveMinimum).toBeUndefined();
+    expect((anyOf[0] as any).additionalProperties).toBeUndefined();
+    expect((anyOf[1] as any).contentEncoding).toBeUndefined();
+  });
 });
