@@ -30,12 +30,16 @@ describe('ResponseService', () => {
       honoContext: {
         req: { url: 'https://gateway.com/v1/chat/completions' },
       },
-      providerOption: { provider: 'openai' },
+      providerOption: {
+        provider: 'openai',
+      },
     } as unknown as RequestContext;
 
     mockHooksService = {
       areSyncHooksAvailable: false,
-      hookSpan: { id: 'hook-span-123' },
+      hookSpan: {
+        id: 'hook-span-123',
+      },
     } as unknown as HooksService;
 
     responseService = new ResponseService(mockRequestContext, mockHooksService);

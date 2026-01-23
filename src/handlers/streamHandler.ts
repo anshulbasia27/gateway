@@ -219,17 +219,39 @@ export async function handleTextResponse(
       { 'html-message': text },
       response.status
     );
+    const cleanHeaders = createCleanResponseHeaders(response.headers);
+    cleanHeaders.set('content-type', 'application/json');
     return new Response(JSON.stringify(transformedText), {
-      ...response,
       status: response.status,
-      headers: new Headers({
-        ...Object.fromEntries(response.headers),
-        'content-type': 'application/json',
-      }),
+      statusText: response.statusText,
+      headers: cleanHeaders,
     });
   }
 
-  return new Response(text, response);
+  return new Response(text, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: createCleanResponseHeaders(response.headers),
+  });
+}
+
+/**
+ * Creates response headers that are HTTP/1.1 compliant by removing
+ * content-length and transfer-encoding headers. This prevents having
+ * both headers present simultaneously which violates HTTP/1.1 specs.
+ * Node.js HTTP module will automatically add the appropriate header
+ * based on how the body is written.
+ */
+function createCleanResponseHeaders(originalHeaders: Headers): Headers {
+  const newHeaders = new Headers();
+  for (const [key, value] of originalHeaders.entries()) {
+    const lowerKey = key.toLowerCase();
+    // Skip content-length and transfer-encoding to let Node.js handle them
+    if (lowerKey !== 'content-length' && lowerKey !== 'transfer-encoding') {
+      newHeaders.set(key, value);
+    }
+  }
+  return newHeaders;
 }
 
 export async function handleNonStreamingMode(
@@ -270,15 +292,27 @@ export async function handleNonStreamingMode(
       gatewayRequest
     );
   } else if (!areSyncHooksAvailable) {
+    // For passthrough responses, consume the body as text to ensure
+    // Content-Length can be properly calculated and avoid chunked encoding
+    // conflicts in Node.js HTTP responses.
+    const bodyText = await response.text();
     return {
-      response: new Response(response.body, response),
+      response: new Response(bodyText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: createCleanResponseHeaders(response.headers),
+      }),
       json: null,
       originalResponseBodyJson,
     };
   }
 
   return {
-    response: new Response(JSON.stringify(responseBodyJson), response),
+    response: new Response(JSON.stringify(responseBodyJson), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: createCleanResponseHeaders(response.headers),
+    }),
     json: responseBodyJson as Record<string, any>,
     // Send original response if transformer exists
     ...(responseTransformer && { originalResponseBodyJson }),
@@ -286,15 +320,27 @@ export async function handleNonStreamingMode(
 }
 
 export function handleAudioResponse(response: Response) {
-  return new Response(response.body, response);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: createCleanResponseHeaders(response.headers),
+  });
 }
 
 export function handleOctetStreamResponse(response: Response) {
-  return new Response(response.body, response);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: createCleanResponseHeaders(response.headers),
+  });
 }
 
 export function handleImageResponse(response: Response) {
-  return new Response(response.body, response);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: createCleanResponseHeaders(response.headers),
+  });
 }
 
 export function handleStreamingMode(
@@ -398,17 +444,24 @@ export function handleStreamingMode(
     responseTransformer?.name ===
       VertexLlamaChatCompleteStreamChunkTransform.name;
   const isJsonStream = isGoogleCohereOrBedrock || isVertexLlama;
+
+  // Create clean headers without content-length for streaming responses
+  // to ensure HTTP/1.1 compliance (no conflict with transfer-encoding: chunked)
+  const cleanHeaders = createCleanResponseHeaders(response.headers);
   if (isJsonStream && responseTransformer) {
+    cleanHeaders.set('content-type', 'text/event-stream');
     return new Response(readable, {
-      ...response,
-      headers: new Headers({
-        ...Object.fromEntries(response.headers),
-        'content-type': 'text/event-stream',
-      }),
+      status: response.status,
+      statusText: response.statusText,
+      headers: cleanHeaders,
     });
   }
 
-  return new Response(readable, response);
+  return new Response(readable, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: cleanHeaders,
+  });
 }
 
 export async function handleJSONToStreamResponse(
@@ -465,11 +518,12 @@ export async function handleJSONToStreamResponse(
     })();
   }
 
+  // Create clean headers without content-length for streaming responses
+  const cleanHeaders = createCleanResponseHeaders(response.headers);
+  cleanHeaders.set('content-type', CONTENT_TYPES.EVENT_STREAM);
+
   return new Response(readable, {
-    headers: new Headers({
-      ...Object.fromEntries(response.headers),
-      'content-type': CONTENT_TYPES.EVENT_STREAM,
-    }),
+    headers: cleanHeaders,
     status: response.status,
     statusText: response.statusText,
   });
