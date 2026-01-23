@@ -212,6 +212,19 @@ export async function* readStream(
   }
 }
 
+/**
+ * Handles text/plain and text/html responses.
+ *
+ * Note: This function handles complete body responses (not streaming), so it doesn't
+ * need special header sanitization for HTTP/1.1 compliance. The content-length will
+ * be correctly calculated by the HTTP server based on the complete response body.
+ * The sanitizeResponseHeaders() in start-server.ts provides a final safety net
+ * at the Node.js server level if needed.
+ *
+ * @param response - The original response
+ * @param responseTransformer - Optional function to transform the response
+ * @returns A new Response with the text content
+ */
 export async function handleTextResponse(
   response: Response,
   responseTransformer: Function | undefined

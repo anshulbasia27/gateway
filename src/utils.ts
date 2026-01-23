@@ -11,51 +11,13 @@ import {
 } from './globals';
 import { Params } from './types/requestBody';
 
-/**
- * Headers that should be removed from streaming responses.
- * According to HTTP/1.1 spec (RFC 7230), a message MUST NOT contain both
- * Content-Length header and Transfer-Encoding header. When Node.js serves
- * a streaming response, it automatically adds Transfer-Encoding: chunked,
- * so we must remove Content-Length to avoid violating the spec.
- */
-export const STREAMING_HEADERS_TO_REMOVE = [
-  'content-length',
-  'transfer-encoding',
-  'content-encoding',
-];
-
-/**
- * Creates sanitized headers for streaming responses by removing headers
- * that conflict with chunked transfer encoding.
- *
- * This prevents HTTP/1.1 spec violations when Node.js automatically adds
- * transfer-encoding: chunked for streaming responses. According to RFC 7230,
- * content-length must not be present alongside transfer-encoding.
- *
- * @param originalHeaders - The original response headers
- * @param additionalHeaders - Optional additional headers to add
- * @returns New Headers object with conflicting headers removed
- */
-export function createStreamingHeaders(
-  originalHeaders: Headers,
-  additionalHeaders?: Record<string, string>
-): Headers {
-  const headers = new Headers();
-
-  originalHeaders.forEach((value, key) => {
-    if (!STREAMING_HEADERS_TO_REMOVE.includes(key.toLowerCase())) {
-      headers.set(key, value);
-    }
-  });
-
-  if (additionalHeaders) {
-    Object.entries(additionalHeaders).forEach(([key, value]) => {
-      headers.set(key, value);
-    });
-  }
-
-  return headers;
-}
+// Re-export HTTP header utilities from centralized location
+// for backward compatibility
+export {
+  STREAMING_HEADERS_TO_REMOVE,
+  createStreamingHeaders,
+  sanitizeResponseHeaders,
+} from './utils/httpHeaders';
 
 export const getStreamModeSplitPattern = (
   proxyProvider: string,

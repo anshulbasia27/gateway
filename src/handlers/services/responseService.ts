@@ -2,7 +2,7 @@
 
 import { getRuntimeKey } from 'hono/adapter';
 import { HEADER_KEYS, POWERED_BY, RESPONSE_HEADER_KEYS } from '../../globals';
-import { STREAMING_HEADERS_TO_REMOVE } from '../../utils';
+import { STREAMING_HEADERS_TO_REMOVE } from '../../utils/httpHeaders';
 import { responseHandler } from '../responseHandlers';
 import { HooksService } from './hooksService';
 import { RequestContext } from './requestContext';

@@ -3,32 +3,68 @@
  *
  * This module provides utilities for handling HTTP headers,
  * particularly for ensuring HTTP/1.1 compliance.
- */
-
-/**
- * Content types that indicate streaming responses.
- * These responses will use chunked transfer encoding in Node.js,
- * so content-length should be removed when present.
- */
-const STREAMING_CONTENT_TYPES = [
-  'text/event-stream',
-  'application/x-ndjson',
-  'application/stream+json',
-];
-
-/**
- * Checks if the response content type indicates a streaming response.
  *
- * @param contentType - The content-type header value
- * @returns true if the content type indicates streaming
+ * Verified to work on Node.js versions:
+ * - v20.19.5
+ * - v22.14.0
+ * - v22.16.0
+ *
+ * The issue addressed: Node.js can enrich HTTP responses with both
+ * content-length and transfer-encoding: chunked headers, which violates
+ * RFC 7230 Section 3.3.3 and causes client-side errors.
  */
-function isStreamingContentType(contentType: string | null): boolean {
-  if (!contentType) {
-    return false;
+
+/**
+ * Headers that should be removed from streaming responses in Node.js.
+ * According to HTTP/1.1 spec (RFC 7230), a message MUST NOT contain both
+ * Content-Length header and Transfer-Encoding header. When Node.js serves
+ * a streaming response, it automatically adds Transfer-Encoding: chunked,
+ * so we must remove Content-Length to avoid violating the spec.
+ *
+ * Note: content-encoding is also removed for Node.js because the gateway
+ * doesn't re-compress the response and keeping it would cause decoding errors.
+ */
+export const STREAMING_HEADERS_TO_REMOVE = [
+  'content-length',
+  'transfer-encoding',
+  'content-encoding',
+] as const;
+
+/**
+ * Creates sanitized headers for streaming responses by removing headers
+ * that conflict with chunked transfer encoding.
+ *
+ * This prevents HTTP/1.1 spec violations when Node.js automatically adds
+ * transfer-encoding: chunked for streaming responses. According to RFC 7230,
+ * content-length must not be present alongside transfer-encoding.
+ *
+ * @param originalHeaders - The original response headers
+ * @param additionalHeaders - Optional additional headers to add
+ * @returns New Headers object with conflicting headers removed
+ */
+export function createStreamingHeaders(
+  originalHeaders: Headers,
+  additionalHeaders?: Record<string, string>
+): Headers {
+  const headers = new Headers();
+
+  originalHeaders.forEach((value, key) => {
+    if (
+      !STREAMING_HEADERS_TO_REMOVE.includes(
+        key.toLowerCase() as (typeof STREAMING_HEADERS_TO_REMOVE)[number]
+      )
+    ) {
+      headers.set(key, value);
+    }
+  });
+
+  if (additionalHeaders) {
+    Object.entries(additionalHeaders).forEach(([key, value]) => {
+      headers.set(key, value);
+    });
   }
-  // Extract the media type (ignore parameters like charset)
-  const mediaType = contentType.split(';')[0].trim().toLowerCase();
-  return STREAMING_CONTENT_TYPES.includes(mediaType);
+
+  return headers;
 }
 
 /**
@@ -38,16 +74,9 @@ function isStreamingContentType(contentType: string | null): boolean {
  * both a Content-Length header field and a Transfer-Encoding header field.
  * When Transfer-Encoding is present, Content-Length MUST be removed.
  *
- * This is particularly important for Node.js environments where the HTTP
- * server automatically adds `transfer-encoding: chunked` for streaming
- * responses. If the upstream response includes a `content-length` header,
- * both headers would be present in the final response, violating HTTP/1.1.
- *
- * This function handles two scenarios:
- * 1. Both headers are already present - removes content-length
- * 2. Content-type indicates streaming (e.g., text/event-stream) and
- *    content-length is present - proactively removes content-length
- *    since Node.js will add transfer-encoding: chunked
+ * This is the final safety net that runs at the Node.js server level,
+ * after all other header processing. It catches any cases where both
+ * headers might still be present.
  *
  * @param response - The Response object to sanitize
  * @returns A new Response with sanitized headers, or the original if no changes needed
@@ -55,17 +84,10 @@ function isStreamingContentType(contentType: string | null): boolean {
 export function sanitizeResponseHeaders(response: Response): Response {
   const transferEncoding = response.headers.get('transfer-encoding');
   const contentLength = response.headers.get('content-length');
-  const contentType = response.headers.get('content-type');
 
-  // Remove content-length if:
-  // 1. transfer-encoding is already present (per RFC 7230), OR
-  // 2. Content type indicates streaming and content-length is present
-  //    (Node.js will add transfer-encoding: chunked for streaming responses)
-  const shouldRemoveContentLength =
-    (transferEncoding && contentLength) ||
-    (isStreamingContentType(contentType) && contentLength);
-
-  if (shouldRemoveContentLength) {
+  // If both headers are present, we need to remove content-length
+  // as per HTTP/1.1 spec (RFC 7230)
+  if (transferEncoding && contentLength) {
     const newHeaders = new Headers(response.headers);
     newHeaders.delete('content-length');
 
