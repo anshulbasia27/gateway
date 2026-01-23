@@ -1,0 +1,47 @@
+{
+  "overallScore": 88,
+  "passesQualityGate": true,
+  "codeQualityScore": 92,
+  "completenessScore": 85,
+  "testingScore": 90,
+  "securityScore": 95,
+  "documentationScore": 80,
+  "summary": "The PR correctly addresses the schema validation error by removing 'exclusiveMinimum' and 'exclusiveMaximum' properties from Vertex AI tool schemas. The implementation follows existing codebase patterns and includes comprehensive unit tests. Minor improvements could include adding a test for 'oneOf' handling and a reference to the specific Figma MCP issue in the code comments.",
+  "issues": [
+    {
+      "severity": "MINOR",
+      "category": "TESTING",
+      "file": "src/providers/google-vertex-ai/utils.test.ts",
+      "description": "No explicit test for 'oneOf' array handling. While 'anyOf' is tested, 'oneOf' arrays containing unsupported properties may also appear in tool schemas (the existing code has a potential bug here where 'oneOf' items are not explicitly processed like 'anyOf').",
+      "suggestedFix": "Add a test case similar to 'removes exclusiveMinimum and exclusiveMaximum from anyOf items' but for 'oneOf' arrays. Also consider fixing the pre-existing bug by adding explicit 'oneOf' handling in recursivelyDeleteUnsupportedParameters()."
+    },
+    {
+      "severity": "SUGGESTION",
+      "category": "COMPLETENESS",
+      "file": "src/providers/google-vertex-ai/utils.ts",
+      "line": 317,
+      "description": "The function handles 'anyOf' explicitly but not 'oneOf'. While this is a pre-existing issue (not introduced by this PR), 'oneOf' arrays containing exclusiveMinimum/exclusiveMaximum properties would not be cleaned up properly.",
+      "suggestedFix": "Add explicit handling for 'oneOf': `if (key == 'oneOf' && Array.isArray(obj[key])) { obj[key].forEach((item: any) => { recursivelyDeleteUnsupportedParameters(item); }); }`"
+    },
+    {
+      "severity": "MINOR",
+      "category": "DOCS",
+      "file": "src/providers/google-vertex-ai/utils.ts",
+      "line": 310,
+      "description": "The comment could be more specific about which properties were added and why (e.g., mentioning the Figma MCP issue for historical context).",
+      "suggestedFix": "Update comment to: `// Remove JSON Schema validation keywords not supported by Vertex AI (fixes Figma MCP schema validation errors)`"
+    },
+    {
+      "severity": "SUGGESTION",
+      "category": "COMPLETENESS",
+      "description": "Other JSON Schema validation keywords that may not be supported by Vertex AI include: 'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'pattern', 'const', 'default'. Consider proactively handling these if they might appear in tool schemas.",
+      "suggestedFix": "Review the Vertex AI Schema documentation at https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema and consider adding removal of other unsupported keywords that might be commonly used."
+    },
+    {
+      "severity": "MINOR",
+      "category": "TESTING",
+      "description": "No integration test confirming the fix works with Figma MCP as mentioned in the acceptance criteria. While this is understandable due to external dependencies, a comment in the PR or test file could document manual testing results.",
+      "suggestedFix": "Add a comment in the test file or PR description documenting that the fix was verified against Figma MCP in a real environment."
+    }
+  ]
+}
