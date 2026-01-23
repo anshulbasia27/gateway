@@ -169,5 +169,131 @@ describe('sanitizeResponseHeaders', () => {
       expect(sanitized.headers.get('content-type')).toBe('text/event-stream');
       expect(sanitized.body).toBeDefined();
     });
+
+    it('should proactively remove content-length for streaming content-type without transfer-encoding', () => {
+      // This is the key fix for Node.js: when the content-type is text/event-stream,
+      // Node.js HTTP server will automatically add transfer-encoding: chunked.
+      // We need to remove content-length proactively to prevent HTTP/1.1 violation.
+      const { readable } = new TransformStream();
+
+      const response = new Response(readable, {
+        headers: {
+          'content-length': '100',
+          'content-type': 'text/event-stream',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      // content-length should be removed because the content-type is streaming
+      expect(sanitized.headers.get('content-length')).toBeNull();
+      expect(sanitized.headers.get('content-type')).toBe('text/event-stream');
+      expect(sanitized.body).toBeDefined();
+    });
+
+    it('should proactively remove content-length for ndjson streaming content-type', () => {
+      // application/x-ndjson is another streaming content type
+      const { readable } = new TransformStream();
+
+      const response = new Response(readable, {
+        headers: {
+          'content-length': '100',
+          'content-type': 'application/x-ndjson',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBeNull();
+      expect(sanitized.headers.get('content-type')).toBe(
+        'application/x-ndjson'
+      );
+    });
+
+    it('should proactively remove content-length for stream+json content-type', () => {
+      // application/stream+json is another streaming content type
+      const { readable } = new TransformStream();
+
+      const response = new Response(readable, {
+        headers: {
+          'content-length': '100',
+          'content-type': 'application/stream+json',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBeNull();
+      expect(sanitized.headers.get('content-type')).toBe(
+        'application/stream+json'
+      );
+    });
+
+    it('should handle content-type with charset parameter', () => {
+      // Content-type might include charset parameter
+      const { readable } = new TransformStream();
+
+      const response = new Response(readable, {
+        headers: {
+          'content-length': '100',
+          'content-type': 'text/event-stream; charset=utf-8',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBeNull();
+      expect(sanitized.headers.get('content-type')).toBe(
+        'text/event-stream; charset=utf-8'
+      );
+    });
+
+    it('should preserve content-length for non-streaming content-type', () => {
+      // For non-streaming content types, content-length should be preserved
+      const response = new Response('regular body content', {
+        headers: {
+          'content-length': '20',
+          'content-type': 'text/plain',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBe('20');
+      expect(sanitized.headers.get('content-type')).toBe('text/plain');
+    });
+
+    it('should preserve content-length for application/json', () => {
+      // JSON responses should preserve content-length
+      const response = new Response('{"key": "value"}', {
+        headers: {
+          'content-length': '16',
+          'content-type': 'application/json',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBe('16');
+      expect(sanitized.headers.get('content-type')).toBe('application/json');
+    });
+
+    it('should handle streaming content-type without content-length', () => {
+      // When there's no content-length, no modification needed
+      const { readable } = new TransformStream();
+
+      const response = new Response(readable, {
+        headers: {
+          'content-type': 'text/event-stream',
+        },
+      });
+
+      const sanitized = sanitizeResponseHeaders(response);
+
+      expect(sanitized.headers.get('content-length')).toBeNull();
+      expect(sanitized.headers.get('content-type')).toBe('text/event-stream');
+      // Should return the same response object since no changes needed
+      expect(sanitized).toBe(response);
+    });
   });
 });
