@@ -20,8 +20,6 @@ interface CreateResponseOptions {
   retryAttempt: number;
   createdAt?: Date;
   executionTime?: number;
-  /** The response body as a string, used to calculate correct content-length */
-  responseBodyString?: string;
 }
 
 export class ResponseService {
@@ -42,39 +40,15 @@ export class ResponseService {
       cache,
       retryAttempt,
       originalResponseJson,
-      responseBodyString,
     } = options;
 
     let finalMappedResponse: Response;
     let originalResponseJSON: Record<string, any> | null | undefined;
     let responseJson: Record<string, any> | null | undefined;
-    let bodyString: string | undefined = responseBodyString;
 
     if (isResponseAlreadyMapped) {
       finalMappedResponse = response;
       originalResponseJSON = originalResponseJson;
-      // For non-streaming responses that are already mapped (e.g., from hooks),
-      // we need to read the body to get the correct content-length
-      if (
-        !this.context.isStreaming &&
-        bodyString === undefined &&
-        getRuntimeKey() === 'node'
-      ) {
-        try {
-          // Clone the response to read its body without consuming the original
-          const clonedResponse = response.clone();
-          bodyString = await clonedResponse.text();
-          // Create a new response with the body string to ensure it can be read again
-          finalMappedResponse = new Response(bodyString, {
-            status: response.status,
-            statusText: response.statusText,
-            headers: response.headers,
-          });
-        } catch {
-          // If cloning fails, continue without setting content-length
-          bodyString = undefined;
-        }
-      }
     } else {
       ({
         response: finalMappedResponse,
@@ -85,18 +59,9 @@ export class ResponseService {
         responseTransformer,
         cache.isCacheHit
       ));
-      // For non-streaming responses where we have the JSON, calculate the body string
-      if (responseJson && !this.context.isStreaming) {
-        bodyString = JSON.stringify(responseJson);
-      }
     }
 
-    this.updateHeaders(
-      finalMappedResponse,
-      cache.cacheStatus,
-      retryAttempt,
-      bodyString
-    );
+    this.updateHeaders(finalMappedResponse, cache.cacheStatus, retryAttempt);
 
     return {
       response: finalMappedResponse,
@@ -134,8 +99,7 @@ export class ResponseService {
   updateHeaders(
     response: Response,
     cacheStatus: string | undefined,
-    retryAttempt: number,
-    responseBodyString?: string
+    retryAttempt: number
   ) {
     // Append headers directly
     response.headers.append(
@@ -159,30 +123,20 @@ export class ResponseService {
       response.headers.append(HEADER_KEYS.PROVIDER, this.context.provider);
     }
 
-    // Handle content-length and transfer-encoding headers.
-    // According to HTTP/1.1 spec (RFC 7230), content-length and transfer-encoding
-    // should not be present together. For Node.js runtime:
-    // - For non-streaming responses with known body: set correct content-length
-    // - For streaming responses: delete both headers to allow chunked encoding
-    if (getRuntimeKey() == 'node') {
+    // Remove headers that can conflict with how the HTTP server handles the response body.
+    // Per HTTP/1.1 specification (RFC 7230), content-length and transfer-encoding headers
+    // MUST NOT both be present in the same message. When running on Node.js, we delete both
+    // headers and let the Node.js HTTP server determine the appropriate transfer mechanism
+    // based on how the response body is written (buffered vs streamed).
+    if (getRuntimeKey() === 'node') {
       response.headers.delete('content-encoding');
+      // Delete both content-length and transfer-encoding to prevent HTTP/1.1 specification
+      // violations where both headers might be present simultaneously
       response.headers.delete('transfer-encoding');
-
-      // For non-streaming responses where we have the body string,
-      // set the correct content-length to prevent Node.js from using chunked encoding
-      if (!this.context.isStreaming && responseBodyString !== undefined) {
-        const bodyByteLength = new TextEncoder().encode(
-          responseBodyString
-        ).length;
-        response.headers.set('content-length', bodyByteLength.toString());
-      } else {
-        // For streaming responses or when body is unknown, delete content-length
-        // to allow proper chunked transfer encoding
-        response.headers.delete('content-length');
-      }
+      response.headers.delete('content-length');
     } else {
-      // For non-Node.js runtimes (e.g., Cloudflare Workers), delete content-length
-      // as the runtime will handle it appropriately
+      // For non-Node.js runtimes (e.g., Cloudflare Workers), only delete content-length
+      // as those environments handle transfer encoding differently
       response.headers.delete('content-length');
     }
 
