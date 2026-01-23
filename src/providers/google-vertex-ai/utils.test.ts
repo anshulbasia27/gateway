@@ -878,4 +878,116 @@ describe('recursivelyDeleteUnsupportedParameters', () => {
     expect((anyOf[0] as any).additionalProperties).toBeUndefined();
     expect((anyOf[1] as any).contentEncoding).toBeUndefined();
   });
+
+  it('removes exclusiveMinimum and exclusiveMaximum from oneOf items', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          oneOf: [
+            {
+              type: 'integer',
+              exclusiveMinimum: 0,
+            },
+            {
+              type: 'number',
+              exclusiveMaximum: 100,
+            },
+          ],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.value.oneOf[0].exclusiveMinimum).toBeUndefined();
+    expect(schema.properties.value.oneOf[1].exclusiveMaximum).toBeUndefined();
+    expect(schema.properties.value.oneOf[0].type).toBe('integer');
+    expect(schema.properties.value.oneOf[1].type).toBe('number');
+  });
+
+  it('removes exclusiveMinimum from allOf items', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          allOf: [
+            {
+              type: 'number',
+              exclusiveMinimum: 0,
+            },
+            {
+              exclusiveMaximum: 100,
+            },
+          ],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(
+      (schema.properties.value.allOf[0] as any).exclusiveMinimum
+    ).toBeUndefined();
+    expect(
+      (schema.properties.value.allOf[1] as any).exclusiveMaximum
+    ).toBeUndefined();
+    expect(schema.properties.value.allOf[0].type).toBe('number');
+  });
+
+  it('removes unsupported properties from tuple items array', () => {
+    const schema = {
+      type: 'array',
+      items: [
+        {
+          type: 'number',
+          exclusiveMinimum: 0,
+        },
+        {
+          type: 'string',
+          contentEncoding: 'base64',
+        },
+      ],
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema.items[0] as any).exclusiveMinimum).toBeUndefined();
+    expect((schema.items[1] as any).contentEncoding).toBeUndefined();
+    expect(schema.items[0].type).toBe('number');
+    expect(schema.items[1].type).toBe('string');
+  });
+
+  it('removes unsupported properties from deeply nested array structures', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              values: {
+                oneOf: [
+                  {
+                    type: 'number',
+                    exclusiveMinimum: 0,
+                    exclusiveMaximum: 100,
+                  },
+                  {
+                    type: 'array',
+                    items: {
+                      type: 'integer',
+                      exclusiveMinimum: 1,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    const oneOf = schema.properties.data.items.properties.values.oneOf;
+    expect((oneOf[0] as any).exclusiveMinimum).toBeUndefined();
+    expect((oneOf[0] as any).exclusiveMaximum).toBeUndefined();
+    expect((oneOf[1].items as any).exclusiveMinimum).toBeUndefined();
+    expect(oneOf[0].type).toBe('number');
+    expect((oneOf[1].items as any).type).toBe('integer');
+  });
 });

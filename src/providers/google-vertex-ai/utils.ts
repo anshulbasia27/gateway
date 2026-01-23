@@ -306,7 +306,16 @@ export const transformGeminiToolParameters = (
  * @see https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
  */
 export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
-  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+  if (obj === null || typeof obj !== 'object') return;
+
+  // Handle arrays by processing each item recursively
+  if (Array.isArray(obj)) {
+    obj.forEach((item) => {
+      recursivelyDeleteUnsupportedParameters(item);
+    });
+    return;
+  }
+
   // Remove unsupported JSON Schema properties
   delete obj.additional_properties;
   delete obj.additionalProperties;
@@ -339,11 +348,6 @@ export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
   for (const key in obj) {
     if (obj[key] !== null && typeof obj[key] === 'object') {
       recursivelyDeleteUnsupportedParameters(obj[key]);
-    }
-    if (key == 'anyOf' && Array.isArray(obj[key])) {
-      obj[key].forEach((item: any) => {
-        recursivelyDeleteUnsupportedParameters(item);
-      });
     }
   }
 };
