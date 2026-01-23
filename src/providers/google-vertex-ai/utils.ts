@@ -287,7 +287,8 @@ export const transformGeminiToolParameters = (
           continue;
         }
 
-        transformed[key] = transformNode(hadNull ? nonNullItems : value);
+        // Always use 'anyOf' since Vertex AI only supports anyOf, not oneOf
+        transformed.anyOf = transformNode(hadNull ? nonNullItems : value);
         if (hadNull) transformed.nullable = true;
         continue;
       }
@@ -306,9 +307,12 @@ export const transformGeminiToolParameters = (
  *
  * Supported properties: type, format, title, description, nullable, enum,
  * items, properties, required, minItems, maxItems, minimum, maximum,
- * minLength, maxLength, pattern, default, anyOf, propertyOrdering
+ * minLength, maxLength, pattern, default, anyOf, oneOf, propertyOrdering, example
  *
  * All other JSON Schema properties must be removed to avoid validation errors.
+ *
+ * Note: anyOf and oneOf are NOT in this list because they are processed by
+ * transformGeminiToolParameters for nullable type handling.
  */
 const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
   // Schema identification and references
@@ -319,6 +323,7 @@ const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
   'definitions',
   '$comment',
   '$anchor',
+  '$vocabulary',
 
   // Additional/pattern properties
   'additionalProperties',
@@ -327,7 +332,7 @@ const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
   'unevaluatedProperties',
   'unevaluatedItems',
 
-  // Numeric constraints not supported
+  // Numeric constraints not supported by Vertex AI
   'exclusiveMinimum',
   'exclusiveMaximum',
   'multipleOf',
@@ -345,9 +350,8 @@ const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
   'prefixItems',
   'uniqueItems',
 
-  // Composition keywords not fully supported
+  // Composition keywords (note: anyOf IS supported, oneOf is NOT fully supported)
   'allOf',
-  'oneOf',
   'not',
 
   // Conditional keywords not supported
@@ -368,10 +372,28 @@ const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
   'deprecated',
   'readOnly',
   'writeOnly',
+
+  // OpenAPI-specific keywords not supported
+  'externalDocs',
+  'discriminator',
+  'xml',
 ];
 
-export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
-  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
+/**
+ * Recursively removes unsupported JSON Schema properties from an object.
+ * Vertex AI has a limited subset of JSON Schema support and will reject
+ * requests containing unsupported properties like exclusiveMinimum.
+ *
+ * @param obj - The JSON Schema object to clean
+ * @see https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
+ */
+export const recursivelyDeleteUnsupportedParameters = (obj: any): void => {
+  if (typeof obj !== 'object' || obj === null) return;
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item) => recursivelyDeleteUnsupportedParameters(item));
+    return;
+  }
 
   for (const prop of UNSUPPORTED_JSON_SCHEMA_PROPERTIES) {
     delete obj[prop];
@@ -380,11 +402,6 @@ export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
   for (const key in obj) {
     if (obj[key] !== null && typeof obj[key] === 'object') {
       recursivelyDeleteUnsupportedParameters(obj[key]);
-    }
-    if (key === 'anyOf' && Array.isArray(obj[key])) {
-      obj[key].forEach((item: any) => {
-        recursivelyDeleteUnsupportedParameters(item);
-      });
     }
   }
 };

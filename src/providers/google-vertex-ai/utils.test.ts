@@ -583,12 +583,32 @@ describe('transformGeminiToolParameters', () => {
 
   it('keeps multi-type unions without null as anyOf (identity = Passport | NationalID)', () => {
     const identity = transformed.properties.identity;
-    const union = (identity.anyOf || identity.oneOf) as any[];
-    expect(Array.isArray(union)).toBe(true);
-    expect(union.length).toBe(2);
+    // Should always be anyOf (oneOf is converted to anyOf for Vertex AI compatibility)
+    expect(identity.anyOf).toBeDefined();
+    expect(identity.oneOf).toBeUndefined();
+    expect(Array.isArray(identity.anyOf)).toBe(true);
+    expect(identity.anyOf.length).toBe(2);
     expect(identity.nullable).toBeUndefined();
-    expect(union[0].type).toBe('object');
-    expect(union[1].type).toBe('object');
+    expect(identity.anyOf[0].type).toBe('object');
+    expect(identity.anyOf[1].type).toBe('object');
+  });
+
+  it('converts oneOf to anyOf for Vertex AI compatibility', () => {
+    const schemaWithOneOf = {
+      type: 'object',
+      properties: {
+        value: {
+          oneOf: [{ type: 'string' }, { type: 'number' }],
+        },
+      },
+    };
+    const result = transformGeminiToolParameters(schemaWithOneOf);
+    expect(result.properties.value.anyOf).toBeDefined();
+    expect(result.properties.value.oneOf).toBeUndefined();
+    expect(result.properties.value.anyOf).toEqual([
+      { type: 'string' },
+      { type: 'number' },
+    ]);
   });
 
   it('retains default values/titles when flattening (notes, contact.phone)', () => {
@@ -676,19 +696,36 @@ describe('recursivelyDeleteUnsupportedParameters', () => {
     expect(schema.properties.foo.$ref).toBeUndefined();
   });
 
-  it('removes allOf, oneOf, and not keywords', () => {
+  it('removes allOf and not keywords', () => {
     const schema = {
       type: 'object',
       properties: {
         value: {
           allOf: [{ type: 'string' }, { minLength: 1 }],
-          oneOf: [{ const: 'a' }, { const: 'b' }],
           not: { type: 'null' },
         },
       },
     };
     recursivelyDeleteUnsupportedParameters(schema);
     expect(schema.properties.value).toEqual({});
+  });
+
+  it('preserves oneOf for processing by transformGeminiToolParameters', () => {
+    // oneOf is NOT deleted because transformGeminiToolParameters converts it to anyOf
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          oneOf: [{ type: 'string' }, { type: 'number' }],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.value.oneOf).toBeDefined();
+    expect(schema.properties.value.oneOf).toEqual([
+      { type: 'string' },
+      { type: 'number' },
+    ]);
   });
 
   it('removes conditional keywords if/then/else', () => {
