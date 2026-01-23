@@ -1,4 +1,8 @@
-import { derefer, transformGeminiToolParameters } from './utils';
+import {
+  derefer,
+  transformGeminiToolParameters,
+  recursivelyDeleteUnsupportedParameters,
+} from './utils';
 
 /*
 from enum import StrEnum
@@ -614,5 +618,144 @@ describe('transformGeminiToolParameters', () => {
       'identity',
       'emergency_contacts',
     ]);
+  });
+});
+
+describe('recursivelyDeleteUnsupportedParameters', () => {
+  it('removes exclusiveMinimum from schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        age: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+          description: 'Age in years',
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.age.exclusiveMinimum).toBeUndefined();
+    expect(schema.properties.age.type).toBe('integer');
+    expect(schema.properties.age.description).toBe('Age in years');
+  });
+
+  it('removes exclusiveMaximum from schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        rating: {
+          type: 'number',
+          exclusiveMaximum: 5,
+          description: 'Rating value',
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.rating.exclusiveMaximum).toBeUndefined();
+    expect(schema.properties.rating.type).toBe('number');
+    expect(schema.properties.rating.description).toBe('Rating value');
+  });
+
+  it('removes both exclusiveMinimum and exclusiveMaximum from schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        score: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          exclusiveMaximum: 100,
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.score.exclusiveMinimum).toBeUndefined();
+    expect(schema.properties.score.exclusiveMaximum).toBeUndefined();
+    expect(schema.properties.score.type).toBe('number');
+  });
+
+  it('removes exclusiveMinimum and exclusiveMaximum from nested objects', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        user: {
+          type: 'object',
+          properties: {
+            age: {
+              type: 'integer',
+              exclusiveMinimum: 0,
+            },
+            height: {
+              type: 'number',
+              exclusiveMaximum: 300,
+            },
+          },
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(
+      schema.properties.user.properties.age.exclusiveMinimum
+    ).toBeUndefined();
+    expect(
+      schema.properties.user.properties.height.exclusiveMaximum
+    ).toBeUndefined();
+  });
+
+  it('removes exclusiveMinimum and exclusiveMaximum from anyOf items', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          anyOf: [
+            {
+              type: 'integer',
+              exclusiveMinimum: 0,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.value.anyOf[0].exclusiveMinimum).toBeUndefined();
+    expect(schema.properties.value.anyOf[0].type).toBe('integer');
+  });
+
+  it('removes additionalProperties from schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+      },
+      additionalProperties: false,
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).additionalProperties).toBeUndefined();
+  });
+
+  it('removes $schema from schema', () => {
+    const schema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).$schema).toBeUndefined();
+  });
+
+  it('handles null and non-object inputs gracefully', () => {
+    expect(() => recursivelyDeleteUnsupportedParameters(null)).not.toThrow();
+    expect(() =>
+      recursivelyDeleteUnsupportedParameters(undefined)
+    ).not.toThrow();
+    expect(() =>
+      recursivelyDeleteUnsupportedParameters('string')
+    ).not.toThrow();
+    expect(() => recursivelyDeleteUnsupportedParameters(123)).not.toThrow();
+    expect(() => recursivelyDeleteUnsupportedParameters([])).not.toThrow();
   });
 });

@@ -300,13 +300,16 @@ export const transformGeminiToolParameters = (
   return transformNode(schema);
 };
 
-// Vertex AI does not support additionalProperties in JSON Schema
+// Vertex AI does not support certain JSON Schema properties
 // https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
 export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
   delete obj.additional_properties;
   delete obj.additionalProperties;
   delete obj['$schema'];
+  // Remove JSON Schema validation keywords not supported by Vertex AI
+  delete obj.exclusiveMinimum;
+  delete obj.exclusiveMaximum;
   for (const key in obj) {
     if (obj[key] !== null && typeof obj[key] === 'object') {
       recursivelyDeleteUnsupportedParameters(obj[key]);
