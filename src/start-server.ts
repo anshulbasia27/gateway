@@ -8,6 +8,7 @@ import { Context } from 'hono';
 import { createNodeWebSocket } from '@hono/node-ws';
 import { realTimeHandlerNode } from './handlers/realtimeHandlerNode';
 import { requestValidator } from './middlewares/requestValidator';
+import { sanitizeResponseHeaders } from './utils/httpHeaders';
 
 // Extract the port number from the command line arguments
 const defaultPort = 8787;
@@ -143,8 +144,18 @@ app.get(
   upgradeWebSocket(realTimeHandlerNode)
 );
 
+/**
+ * Wraps the Hono app fetch function to sanitize response headers.
+ * This ensures HTTP/1.1 compliance by removing conflicting headers
+ * (content-length when transfer-encoding is present).
+ */
+const fetchWithSanitizedHeaders: typeof app.fetch = async (request, env) => {
+  const response = await app.fetch(request, env);
+  return sanitizeResponseHeaders(response);
+};
+
 const server = serve({
-  fetch: app.fetch,
+  fetch: fetchWithSanitizedHeaders,
   port: port,
 });
 
