@@ -1,8 +1,6 @@
 import { ResponseService } from '../../../../../src/handlers/services/responseService';
 import { RequestContext } from '../../../../../src/handlers/services/requestContext';
-import { ProviderContext } from '../../../../../src/handlers/services/providerContext';
 import { HooksService } from '../../../../../src/handlers/services/hooksService';
-import { LogsService } from '../../../../../src/handlers/services/logsService';
 import { responseHandler } from '../../../../../src/handlers/responseHandlers';
 import { getRuntimeKey } from 'hono/adapter';
 import {
@@ -12,14 +10,12 @@ import {
 } from '../../../../../src/globals';
 
 // Mock dependencies
-jest.mock('../../responseHandlers');
+jest.mock('../../../../../src/handlers/responseHandlers');
 jest.mock('hono/adapter');
 
 describe('ResponseService', () => {
   let mockRequestContext: RequestContext;
-  let mockProviderContext: ProviderContext;
   let mockHooksService: HooksService;
-  let mockLogsService: LogsService;
   let responseService: ResponseService;
 
   beforeEach(() => {
@@ -36,20 +32,11 @@ describe('ResponseService', () => {
       },
     } as unknown as RequestContext;
 
-    mockProviderContext = {} as ProviderContext;
-
     mockHooksService = {
       areSyncHooksAvailable: false,
     } as unknown as HooksService;
 
-    mockLogsService = {} as LogsService;
-
-    responseService = new ResponseService(
-      mockRequestContext,
-      mockProviderContext,
-      mockHooksService,
-      mockLogsService
-    );
+    responseService = new ResponseService(mockRequestContext, mockHooksService);
 
     // Reset mocks
     jest.clearAllMocks();
@@ -262,9 +249,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const options = {
@@ -326,9 +311,7 @@ describe('ResponseService', () => {
 
       const streamingService = new ResponseService(
         streamingContext,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const mockResponse = new Response('{}');
@@ -461,9 +444,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithPortkey.updateHeaders(mockResponse, 'MISS', 0);
@@ -479,9 +460,7 @@ describe('ResponseService', () => {
 
       const serviceWithEmptyProvider = new ResponseService(
         contextWithEmptyProvider,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithEmptyProvider.updateHeaders(mockResponse, 'MISS', 0);

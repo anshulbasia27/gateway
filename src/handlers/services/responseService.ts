@@ -2,6 +2,7 @@
 
 import { getRuntimeKey } from 'hono/adapter';
 import { HEADER_KEYS, POWERED_BY, RESPONSE_HEADER_KEYS } from '../../globals';
+import { STREAMING_HEADERS_TO_REMOVE } from '../../utils';
 import { responseHandler } from '../responseHandlers';
 import { HooksService } from './hooksService';
 import { RequestContext } from './requestContext';
@@ -123,12 +124,19 @@ export class ResponseService {
       response.headers.append(HEADER_KEYS.PROVIDER, this.context.provider);
     }
 
-    // Remove headers directly
+    // Remove headers that conflict with chunked transfer encoding.
+    // According to HTTP/1.1 spec (RFC 7230), content-length must not be present
+    // alongside transfer-encoding. When Node.js serves streaming responses,
+    // it automatically adds transfer-encoding: chunked.
     if (getRuntimeKey() == 'node') {
-      response.headers.delete('content-encoding');
-      response.headers.delete('transfer-encoding');
+      STREAMING_HEADERS_TO_REMOVE.forEach((header) => {
+        response.headers.delete(header);
+      });
+    } else {
+      // For non-Node runtimes (e.g., Cloudflare Workers), only remove content-length
+      // as they may handle encoding differently
+      response.headers.delete('content-length');
     }
-    response.headers.delete('content-length');
 
     return response;
   }
