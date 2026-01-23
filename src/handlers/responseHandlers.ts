@@ -6,6 +6,7 @@ import { OpenAICompleteJSONToStreamResponseTransform } from '../providers/openai
 import { Options, Params } from '../types/requestBody';
 
 import {
+  createNonStreamingResponseHeaders,
   handleAudioResponse,
   handleImageResponse,
   handleJSONToStreamResponse,
@@ -213,10 +214,17 @@ function createHookResponse(
     }),
   };
 
+  // Use filtered headers for HTTP/1.1 compliance when creating non-streaming
+  // JSON responses. This ensures transfer-encoding is not present alongside
+  // content-length which violates HTTP/1.1 spec.
+  const responseHeaders = options.headers
+    ? new Headers(options.headers)
+    : createNonStreamingResponseHeaders(baseResponse.headers);
+
   return new Response(JSON.stringify(responseBody), {
     status: options.status || baseResponse.status,
     statusText: options.statusText || baseResponse.statusText,
-    headers: options.headers || baseResponse.headers,
+    headers: responseHeaders,
   });
 }
 

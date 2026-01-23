@@ -123,29 +123,30 @@ export class ResponseService {
       response.headers.append(HEADER_KEYS.PROVIDER, this.context.provider);
     }
 
-    // Remove headers for HTTP compliance and proper response handling.
-    //
+    // Remove headers to ensure HTTP/1.1 compliance.
     // According to HTTP/1.1 RFC 7230 Section 3.3.2:
     // "A sender MUST NOT send a Content-Length header field in any message
     // that contains a Transfer-Encoding header field."
     //
-    // For Node.js runtime, the underlying HTTP server may automatically set
-    // Transfer-Encoding: chunked when streaming the response body. To ensure
-    // HTTP compliance and prevent client-side parsing errors, we remove both
-    // Content-Length and Transfer-Encoding headers, allowing the Node.js HTTP
-    // server to set the appropriate header based on how the body is transmitted.
-    //
-    // We also remove Content-Encoding to prevent decompression issues, as the
-    // gateway may have already decompressed the response from the upstream provider.
+    // For Node.js runtime, we handle streaming and non-streaming responses
+    // differently to ensure proper HTTP compliance:
+    // - Streaming: remove content-length, allow transfer-encoding for chunked responses
+    // - Non-streaming: remove transfer-encoding, allow content-length to be set by HTTP layer
     if (getRuntimeKey() === 'node') {
       response.headers.delete('content-encoding');
-      response.headers.delete('transfer-encoding');
-    }
 
-    // Always delete Content-Length to prevent HTTP specification violations.
-    // The underlying HTTP server will set the correct Content-Length for
-    // non-chunked responses based on the actual body size.
-    response.headers.delete('content-length');
+      if (this.context.isStreaming) {
+        // Streaming responses: remove content-length, allow transfer-encoding
+        response.headers.delete('content-length');
+      } else {
+        // Non-streaming responses: remove transfer-encoding and content-length
+        // The HTTP layer will set the correct content-length based on body size
+        response.headers.delete('transfer-encoding');
+        response.headers.delete('content-length');
+      }
+    } else {
+      response.headers.delete('content-length');
+    }
 
     return response;
   }

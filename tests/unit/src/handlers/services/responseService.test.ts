@@ -1,9 +1,3 @@
-// Mock the env module before importing other modules that depend on it
-jest.mock('../../../../../src/utils/env', () => ({
-  Environment: jest.fn().mockReturnValue({}),
-  getValueOrFileContents: jest.fn().mockImplementation((value) => value),
-}));
-
 import { ResponseService } from '../../../../../src/handlers/services/responseService';
 import { RequestContext } from '../../../../../src/handlers/services/requestContext';
 import { HooksService } from '../../../../../src/handlers/services/hooksService';
@@ -41,7 +35,7 @@ describe('ResponseService', () => {
 
     mockHooksService = {
       areSyncHooksAvailable: false,
-      hookSpan: { id: 'test-hook-span-id' },
+      hookSpan: { id: 'hook-span-123' },
     } as unknown as HooksService;
 
     responseService = new ResponseService(mockRequestContext, mockHooksService);
@@ -143,8 +137,6 @@ describe('ResponseService', () => {
         mockHooksService.hookSpan?.id
       );
 
-      // Response objects can't be directly compared with toEqual due to Map internals
-      expect(result.response).toBeDefined();
       expect(result.responseJson).toBe(responseJson);
       expect(result.originalResponseJson).toBe(originalJson);
     });
@@ -368,38 +360,39 @@ describe('ResponseService', () => {
       expect(mockResponse.headers.get(HEADER_KEYS.PROVIDER)).toBe('openai');
     });
 
-    it('should remove problematic headers', () => {
+    it('should remove transfer-encoding and content-length for non-streaming node responses', () => {
+      // Non-streaming is the default in mockRequestContext (isStreaming: false)
       responseService.updateHeaders(mockResponse, undefined, 0);
 
       expect(mockResponse.headers.get('content-length')).toBeNull();
       expect(mockResponse.headers.get('transfer-encoding')).toBeNull();
     });
 
-    it('should ensure HTTP/1.1 compliance by removing both content-length and transfer-encoding for Node runtime', () => {
-      // RFC 7230 Section 3.3.2: A sender MUST NOT send a Content-Length header
-      // field in any message that contains a Transfer-Encoding header field.
-      (getRuntimeKey as jest.Mock).mockReturnValue('node');
-      const response = new Response('{}', {
+    it('should remove content-length but preserve transfer-encoding for streaming node responses', () => {
+      const streamingContext = {
+        ...mockRequestContext,
+        isStreaming: true,
+      } as RequestContext;
+
+      const streamingService = new ResponseService(
+        streamingContext,
+        mockHooksService
+      );
+
+      const streamingResponse = new Response('{}', {
         headers: {
           'content-length': '100',
           'transfer-encoding': 'chunked',
-          'content-type': 'application/json',
         },
       });
 
-      responseService.updateHeaders(response, undefined, 0);
+      streamingService.updateHeaders(streamingResponse, undefined, 0);
 
-      // Both headers must be removed to prevent HTTP specification violations
-      expect(response.headers.get('content-length')).toBeNull();
-      expect(response.headers.get('transfer-encoding')).toBeNull();
-      // Content-type should be preserved
-      expect(response.headers.get('content-type')).toBe('application/json');
-    });
-
-    it('should remove brotli encoding', () => {
-      responseService.updateHeaders(mockResponse, undefined, 0);
-
-      expect(mockResponse.headers.get('content-encoding')).toBeNull();
+      expect(streamingResponse.headers.get('content-length')).toBeNull();
+      // transfer-encoding should remain for streaming
+      expect(streamingResponse.headers.get('transfer-encoding')).toBe(
+        'chunked'
+      );
     });
 
     it('should remove content-encoding for node runtime', () => {
@@ -413,7 +406,7 @@ describe('ResponseService', () => {
       expect(response.headers.get('content-encoding')).toBeNull();
     });
 
-    it('should keep content-encoding for non-brotli, non-node', () => {
+    it('should keep content-encoding for non-node runtimes', () => {
       (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
       const response = new Response('{}', {
         headers: { 'content-encoding': 'gzip' },
@@ -422,6 +415,22 @@ describe('ResponseService', () => {
       responseService.updateHeaders(response, undefined, 0);
 
       expect(response.headers.get('content-encoding')).toBe('gzip');
+    });
+
+    it('should only remove content-length for non-node runtimes', () => {
+      (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
+      const response = new Response('{}', {
+        headers: {
+          'content-length': '100',
+          'transfer-encoding': 'chunked',
+        },
+      });
+
+      responseService.updateHeaders(response, undefined, 0);
+
+      expect(response.headers.get('content-length')).toBeNull();
+      // transfer-encoding should remain for non-node runtimes
+      expect(response.headers.get('transfer-encoding')).toBe('chunked');
     });
 
     it('should not add cache status header when undefined', () => {
@@ -468,38 +477,6 @@ describe('ResponseService', () => {
       const result = responseService.updateHeaders(mockResponse, 'MISS', 0);
 
       expect(result).toBe(mockResponse);
-    });
-
-    it('should remove both content-length and transfer-encoding for node runtime to prevent HTTP spec violation', () => {
-      (getRuntimeKey as jest.Mock).mockReturnValue('node');
-      const response = new Response('{}', {
-        headers: {
-          'content-length': '100',
-          'transfer-encoding': 'chunked',
-        },
-      });
-
-      responseService.updateHeaders(response, undefined, 0);
-
-      // Both headers must be removed to comply with HTTP/1.1 spec
-      expect(response.headers.get('content-length')).toBeNull();
-      expect(response.headers.get('transfer-encoding')).toBeNull();
-    });
-
-    it('should only remove content-length for non-node runtimes', () => {
-      (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
-      const response = new Response('{}', {
-        headers: {
-          'content-length': '100',
-          'transfer-encoding': 'chunked',
-        },
-      });
-
-      responseService.updateHeaders(response, undefined, 0);
-
-      // Only content-length should be removed for non-node runtimes
-      expect(response.headers.get('content-length')).toBeNull();
-      expect(response.headers.get('transfer-encoding')).toBe('chunked');
     });
   });
 });
