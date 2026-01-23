@@ -270,8 +270,13 @@ export async function handleNonStreamingMode(
       gatewayRequest
     );
   } else if (!areSyncHooksAvailable) {
+    // For non-streaming responses where hooks are not needed, we still need to
+    // read the body as text rather than passing it as a stream. This ensures
+    // that the Node.js HTTP server won't use chunked transfer encoding, which
+    // could conflict with Content-Length headers from the upstream provider.
+    const bodyText = await response.text();
     return {
-      response: new Response(response.body, response),
+      response: new Response(bodyText, response),
       json: null,
       originalResponseBodyJson,
     };
