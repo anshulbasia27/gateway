@@ -1,4 +1,8 @@
-import { derefer, transformGeminiToolParameters } from './utils';
+import {
+  derefer,
+  transformGeminiToolParameters,
+  recursivelyDeleteUnsupportedParameters,
+} from './utils';
 
 /*
 from enum import StrEnum
@@ -614,5 +618,357 @@ describe('transformGeminiToolParameters', () => {
       'identity',
       'emergency_contacts',
     ]);
+  });
+});
+
+describe('recursivelyDeleteUnsupportedParameters', () => {
+  it('removes exclusiveMinimum and exclusiveMaximum from schema', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        age: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 150,
+          exclusiveMinimum: 0,
+          exclusiveMaximum: 200,
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.age).toEqual({
+      type: 'integer',
+      minimum: 0,
+      maximum: 150,
+    });
+  });
+
+  it('removes additionalProperties and $schema', () => {
+    const schema = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+      },
+      additionalProperties: false,
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema).toEqual({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+      },
+    });
+  });
+
+  it('removes $defs, definitions, and $ref', () => {
+    const schema = {
+      $defs: { Foo: { type: 'string' } },
+      definitions: { Bar: { type: 'number' } },
+      type: 'object',
+      properties: {
+        foo: { $ref: '#/$defs/Foo' },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.$defs).toBeUndefined();
+    expect((schema as any).definitions).toBeUndefined();
+    expect(schema.properties.foo.$ref).toBeUndefined();
+  });
+
+  it('removes allOf, oneOf, and not keywords', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          allOf: [{ type: 'string' }, { minLength: 1 }],
+          oneOf: [{ const: 'a' }, { const: 'b' }],
+          not: { type: 'null' },
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.value).toEqual({});
+  });
+
+  it('removes conditional keywords if/then/else', () => {
+    const schema = {
+      type: 'object',
+      if: { properties: { type: { const: 'a' } } },
+      then: { required: ['a_value'] },
+      else: { required: ['b_value'] },
+      properties: {
+        type: { type: 'string' },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).if).toBeUndefined();
+    expect((schema as any).then).toBeUndefined();
+    expect((schema as any).else).toBeUndefined();
+  });
+
+  it('removes const keyword', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        status: {
+          type: 'string',
+          const: 'active',
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.status).toEqual({ type: 'string' });
+  });
+
+  it('removes annotation keywords (examples, deprecated, readOnly, writeOnly)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          examples: ['John', 'Jane'],
+          deprecated: true,
+          readOnly: true,
+          writeOnly: false,
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.name).toEqual({ type: 'string' });
+  });
+
+  it('removes content keywords (contentEncoding, contentMediaType, contentSchema)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        document: {
+          type: 'string',
+          contentEncoding: 'base64',
+          contentMediaType: 'application/pdf',
+          contentSchema: { type: 'object' },
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.document).toEqual({ type: 'string' });
+  });
+
+  it('removes array-specific unsupported keywords (contains, prefixItems, uniqueItems)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+          contains: { type: 'string', const: 'required' },
+          prefixItems: [{ type: 'string' }],
+          uniqueItems: true,
+          minContains: 1,
+          maxContains: 5,
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.items).toEqual({
+      type: 'array',
+      items: { type: 'string' },
+    });
+  });
+
+  it('removes object-specific unsupported keywords (minProperties, maxProperties, dependentRequired)', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+      },
+      minProperties: 1,
+      maxProperties: 10,
+      dependentRequired: { name: ['email'] },
+      dependentSchemas: { name: { properties: { email: { type: 'string' } } } },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).minProperties).toBeUndefined();
+    expect((schema as any).maxProperties).toBeUndefined();
+    expect((schema as any).dependentRequired).toBeUndefined();
+    expect((schema as any).dependentSchemas).toBeUndefined();
+  });
+
+  it('removes multipleOf keyword', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        quantity: {
+          type: 'integer',
+          multipleOf: 5,
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.quantity).toEqual({ type: 'integer' });
+  });
+
+  it('removes unsupported properties recursively from nested objects', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        user: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            age: {
+              type: 'integer',
+              exclusiveMinimum: 0,
+              minimum: 0,
+            },
+            profile: {
+              type: 'object',
+              properties: {
+                score: {
+                  type: 'number',
+                  multipleOf: 0.5,
+                  exclusiveMaximum: 100,
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.user.additionalProperties).toBeUndefined();
+    expect(
+      (schema.properties.user.properties.age as any).exclusiveMinimum
+    ).toBeUndefined();
+    expect(schema.properties.user.properties.age.minimum).toBe(0);
+    expect(
+      (schema.properties.user.properties.profile.properties.score as any)
+        .multipleOf
+    ).toBeUndefined();
+    expect(
+      (schema.properties.user.properties.profile.properties.score as any)
+        .exclusiveMaximum
+    ).toBeUndefined();
+  });
+
+  it('removes unsupported properties from anyOf items', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        value: {
+          anyOf: [
+            { type: 'string', minLength: 1, contentEncoding: 'utf-8' },
+            { type: 'integer', exclusiveMinimum: 0 },
+          ],
+        },
+      },
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema.properties.value.anyOf).toEqual([
+      { type: 'string', minLength: 1 },
+      { type: 'integer' },
+    ]);
+  });
+
+  it('preserves supported properties (type, format, title, description, etc.)', () => {
+    const schema = {
+      type: 'object',
+      title: 'User',
+      description: 'A user object',
+      properties: {
+        name: {
+          type: 'string',
+          title: 'Name',
+          description: 'The user name',
+          minLength: 1,
+          maxLength: 100,
+          pattern: '^[a-zA-Z]+$',
+          format: 'name',
+        },
+        age: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 150,
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 0,
+          maxItems: 10,
+        },
+        status: {
+          type: 'string',
+          enum: ['active', 'inactive'],
+          default: 'active',
+          nullable: true,
+        },
+      },
+      required: ['name'],
+    };
+    const originalSchema = JSON.parse(JSON.stringify(schema));
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect(schema).toEqual(originalSchema);
+  });
+
+  it('handles null and non-object inputs gracefully', () => {
+    expect(() => recursivelyDeleteUnsupportedParameters(null)).not.toThrow();
+    expect(() =>
+      recursivelyDeleteUnsupportedParameters(undefined)
+    ).not.toThrow();
+    expect(() =>
+      recursivelyDeleteUnsupportedParameters('string')
+    ).not.toThrow();
+    expect(() => recursivelyDeleteUnsupportedParameters(123)).not.toThrow();
+    expect(() => recursivelyDeleteUnsupportedParameters([])).not.toThrow();
+  });
+
+  it('handles deeply nested schemas', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        level1: {
+          type: 'object',
+          properties: {
+            level2: {
+              type: 'object',
+              properties: {
+                level3: {
+                  type: 'object',
+                  properties: {
+                    value: {
+                      type: 'number',
+                      exclusiveMinimum: 0,
+                      exclusiveMaximum: 100,
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              additionalProperties: false,
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: false,
+    };
+    recursivelyDeleteUnsupportedParameters(schema);
+    expect((schema as any).additionalProperties).toBeUndefined();
+    expect(
+      (schema.properties.level1 as any).additionalProperties
+    ).toBeUndefined();
+    expect(
+      (schema.properties.level1.properties.level2 as any).additionalProperties
+    ).toBeUndefined();
+    expect(
+      (schema.properties.level1.properties.level2.properties.level3 as any)
+        .additionalProperties
+    ).toBeUndefined();
+    expect(
+      (
+        schema.properties.level1.properties.level2.properties.level3.properties
+          .value as any
+      ).exclusiveMinimum
+    ).toBeUndefined();
   });
 });

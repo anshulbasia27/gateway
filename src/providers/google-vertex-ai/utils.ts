@@ -300,18 +300,88 @@ export const transformGeminiToolParameters = (
   return transformNode(schema);
 };
 
-// Vertex AI does not support additionalProperties in JSON Schema
-// https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
+/**
+ * Vertex AI only supports a subset of JSON Schema properties.
+ * https://cloud.google.com/vertex-ai/docs/reference/rest/v1/Schema
+ *
+ * Supported properties: type, format, title, description, nullable, enum,
+ * items, properties, required, minItems, maxItems, minimum, maximum,
+ * minLength, maxLength, pattern, default, anyOf, propertyOrdering
+ *
+ * All other JSON Schema properties must be removed to avoid validation errors.
+ */
+const UNSUPPORTED_JSON_SCHEMA_PROPERTIES = [
+  // Schema identification and references
+  '$schema',
+  '$id',
+  '$ref',
+  '$defs',
+  'definitions',
+  '$comment',
+  '$anchor',
+
+  // Additional/pattern properties
+  'additionalProperties',
+  'additional_properties',
+  'patternProperties',
+  'unevaluatedProperties',
+  'unevaluatedItems',
+
+  // Numeric constraints not supported
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+
+  // Object constraints not supported
+  'minProperties',
+  'maxProperties',
+  'dependentRequired',
+  'dependentSchemas',
+
+  // Array constraints not supported
+  'contains',
+  'minContains',
+  'maxContains',
+  'prefixItems',
+  'uniqueItems',
+
+  // Composition keywords not fully supported
+  'allOf',
+  'oneOf',
+  'not',
+
+  // Conditional keywords not supported
+  'if',
+  'then',
+  'else',
+
+  // Const not supported
+  'const',
+
+  // Content keywords not supported
+  'contentEncoding',
+  'contentMediaType',
+  'contentSchema',
+
+  // Annotation keywords not supported
+  'examples',
+  'deprecated',
+  'readOnly',
+  'writeOnly',
+];
+
 export const recursivelyDeleteUnsupportedParameters = (obj: any) => {
   if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return;
-  delete obj.additional_properties;
-  delete obj.additionalProperties;
-  delete obj['$schema'];
+
+  for (const prop of UNSUPPORTED_JSON_SCHEMA_PROPERTIES) {
+    delete obj[prop];
+  }
+
   for (const key in obj) {
     if (obj[key] !== null && typeof obj[key] === 'object') {
       recursivelyDeleteUnsupportedParameters(obj[key]);
     }
-    if (key == 'anyOf' && Array.isArray(obj[key])) {
+    if (key === 'anyOf' && Array.isArray(obj[key])) {
       obj[key].forEach((item: any) => {
         recursivelyDeleteUnsupportedParameters(item);
       });
