@@ -33,7 +33,10 @@ spec:
         ports:
         - containerPort: 8787
           protocol: TCP
-        resources: {}
+        resources:
+          requests:
+            cpu: "2"
+            memory: "2Gi"
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
