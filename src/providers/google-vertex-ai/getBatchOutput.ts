@@ -1,4 +1,5 @@
 import { RequestHandler } from '../types';
+import { Params } from '../../types/requestBody';
 import { GoogleBatchRecord } from './types';
 import { getModelAndProvider, isEmbeddingModel } from './utils';
 import { responseTransformers } from '../open-ai-base';
@@ -85,11 +86,16 @@ const getOpenAIBatchRow = ({
   };
 };
 
+/**
+ * Returns batch output data from Google Vertex AI.
+ * Supports timeout via the optional signal parameter.
+ */
 export const BatchOutputRequestHandler: RequestHandler = async ({
   requestURL,
   providerOptions,
   c,
   requestBody,
+  signal,
 }) => {
   const headers = await GoogleApiConfig.headers({
     c,
@@ -102,6 +108,7 @@ export const BatchOutputRequestHandler: RequestHandler = async ({
   const options = {
     method: 'GET',
     headers,
+    signal,
   };
 
   // URL: <gateway>/v1/batches/<batchId>/output

@@ -3,14 +3,20 @@ import { Options } from '../../types/requestBody';
 import BedrockAPIConfig from './api';
 import { BEDROCK } from '../../globals';
 
+/**
+ * Retrieves file metadata from S3.
+ * Supports timeout via the optional signal parameter.
+ */
 export const BedrockRetrieveFileRequestHandler = async ({
   c,
   providerOptions,
   requestURL,
+  signal,
 }: {
   c: Context;
   providerOptions: Options;
   requestURL: string;
+  signal?: AbortSignal;
 }) => {
   try {
     // construct the base url and endpoint
@@ -42,6 +48,7 @@ export const BedrockRetrieveFileRequestHandler = async ({
     const response = await fetch(retrieveFileURL, {
       method: 'GET',
       headers,
+      signal,
     });
 
     if (!response.ok) {

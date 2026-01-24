@@ -2,9 +2,14 @@ import { RequestHandler } from '../types';
 import GoogleApiConfig from './api';
 import { getBucketAndFile } from './utils';
 
+/**
+ * Retrieves file metadata from Google Cloud Storage.
+ * Supports timeout via the optional signal parameter.
+ */
 export const GoogleRetrieveFileRequestHandler: RequestHandler = async ({
   requestURL,
   providerOptions,
+  signal,
 }) => {
   const fileId = requestURL.split('/').pop();
 
@@ -14,7 +19,7 @@ export const GoogleRetrieveFileRequestHandler: RequestHandler = async ({
 
   const url = `https://storage.googleapis.com/${bucket}/${file}`;
 
-  const response = await fetch(url, { headers, method: 'HEAD' });
+  const response = await fetch(url, { headers, method: 'HEAD', signal });
 
   if (response.status !== 200) {
     throw new Error('File not found');

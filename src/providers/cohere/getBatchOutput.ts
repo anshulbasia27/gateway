@@ -5,14 +5,20 @@ import { CohereGetFileResponse, CohereRetrieveBatchResponse } from './types';
 import { CohereEmbedResponseTransformBatch } from './embed';
 import { COHERE } from '../../globals';
 
+/**
+ * Returns batch output data from Cohere.
+ * Supports timeout via the optional signal parameter.
+ */
 export const CohereGetBatchOutputHandler = async ({
   c,
   providerOptions,
   requestURL,
+  signal,
 }: {
   c: Context;
   providerOptions: Options;
   requestURL: string;
+  signal?: AbortSignal;
 }) => {
   try {
     // get the base url and endpoint for retrieveBatch
@@ -40,6 +46,7 @@ export const CohereGetBatchOutputHandler = async ({
     const retrieveBatchResponse = await fetch(baseURL + endpoint, {
       method: 'GET',
       headers,
+      signal,
     });
     if (!retrieveBatchResponse.ok) {
       const errorText = await retrieveBatchResponse.text();
@@ -62,6 +69,7 @@ export const CohereGetBatchOutputHandler = async ({
       {
         method: 'GET',
         headers,
+        signal,
       }
     );
     const retrieveFileResponseJson: CohereGetFileResponse =

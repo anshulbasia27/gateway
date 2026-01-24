@@ -1,11 +1,21 @@
 import retry from 'async-retry';
 import { MAX_RETRY_LIMIT_MS, POSSIBLE_RETRY_STATUS_HEADERS } from '../globals';
 
+/**
+ * Executes a fetch request with a timeout.
+ * If the request doesn't complete within the specified timeout, it will be aborted.
+ *
+ * @param url - The URL to fetch
+ * @param options - The fetch options
+ * @param timeout - The timeout in milliseconds
+ * @param requestHandler - Optional custom request handler that receives the abort signal
+ * @returns The response from the request, or a timeout error response
+ */
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeout: number,
-  requestHandler?: () => Promise<Response>
+  requestHandler?: (signal: AbortSignal) => Promise<Response>
 ) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -18,12 +28,13 @@ async function fetchWithTimeout(
 
   try {
     if (requestHandler) {
-      response = await requestHandler();
+      response = await requestHandler(controller.signal);
     } else {
       response = await fetch(url, timeoutRequestOptions);
     }
     clearTimeout(timeoutId);
   } catch (err: any) {
+    clearTimeout(timeoutId);
     if (err.name === 'AbortError') {
       response = new Response(
         JSON.stringify({
@@ -54,12 +65,15 @@ async function fetchWithTimeout(
  * If the response's status code is included in the statusCodesToRetry array,
  * the request is retried.
  *
- * @param {string} url - The URL to which the request is made.
- * @param {RequestInit} options - The options for the request, such as method, headers, and body.
- * @param {number} retryCount - The maximum number of times to retry the request.
- * @param {number[]} statusCodesToRetry - The HTTP status codes that should trigger a retry.
- * @returns {Promise<[Response, number | undefined]>} - The response from the request and the number of attempts it took to get a successful response.
- *                                                     If all attempts fail, the error message and status code are returned as a Response object, and the number of attempts is undefined.
+ * @param url - The URL to which the request is made.
+ * @param options - The options for the request, such as method, headers, and body.
+ * @param retryCount - The maximum number of times to retry the request.
+ * @param statusCodesToRetry - The HTTP status codes that should trigger a retry.
+ * @param timeout - The timeout in milliseconds, or null for no timeout.
+ * @param requestHandler - Optional custom request handler that receives an abort signal.
+ * @param followProviderRetry - Whether to follow the provider's retry-after header.
+ * @returns The response from the request and the number of attempts it took to get a successful response.
+ *          If all attempts fail, the error message and status code are returned as a Response object.
  * @throws Will throw an error if the request fails after all retry attempts, with the error message and status code in the thrown error.
  */
 export const retryRequest = async (
@@ -68,7 +82,7 @@ export const retryRequest = async (
   retryCount: number,
   statusCodesToRetry: number[],
   timeout: number | null,
-  requestHandler?: () => Promise<Response>,
+  requestHandler?: (signal?: AbortSignal) => Promise<Response>,
   followProviderRetry?: boolean
 ): Promise<{
   response: Response;
@@ -96,7 +110,7 @@ export const retryRequest = async (
               requestHandler
             );
           } else if (requestHandler) {
-            response = await requestHandler();
+            response = await requestHandler(undefined);
           } else {
             response = await fetch(url, options);
           }

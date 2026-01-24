@@ -40,9 +40,13 @@ const PROVIDER_CONFIG: Record<
 
 const encoder = new TextEncoder();
 
+/**
+ * Uploads a file to Google Cloud Storage.
+ * Supports timeout via the optional signal parameter.
+ */
 export const GoogleFileUploadRequestHandler: RequestHandler<
   ReadableStream
-> = async ({ c, providerOptions, requestBody, requestHeaders }) => {
+> = async ({ c, providerOptions, requestBody, requestHeaders, signal }) => {
   const {
     vertexStorageBucketName,
     filename,
@@ -194,6 +198,7 @@ export const GoogleFileUploadRequestHandler: RequestHandler<
     },
     method: uploadMethod,
     duplex: 'half',
+    signal,
   };
 
   try {
