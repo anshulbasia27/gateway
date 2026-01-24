@@ -43,14 +43,20 @@ const getRowTransform = (modelId: string) => {
   };
 };
 
+/**
+ * Returns batch output data from S3.
+ * Supports timeout via the optional signal parameter.
+ */
 export const BedrockGetBatchOutputRequestHandler = async ({
   c,
   providerOptions,
   requestURL,
+  signal,
 }: {
   c: Context;
   providerOptions: Options;
   requestURL: string;
+  signal?: AbortSignal;
 }): Promise<Response> => {
   try {
     // get s3 file id from batch details
@@ -75,6 +81,7 @@ export const BedrockGetBatchOutputRequestHandler = async ({
     const retrieveBatchesResponse = await fetch(retrieveBatchURL, {
       method: 'GET',
       headers: retrieveBatchesHeaders,
+      signal,
     });
 
     if (!retrieveBatchesResponse.ok) {
@@ -124,6 +131,7 @@ export const BedrockGetBatchOutputRequestHandler = async ({
     const s3FileResponse = await fetch(s3FileURL, {
       method: 'GET',
       headers: s3FileHeaders,
+      signal,
     });
     let responseStream: ReadableStream;
     if (

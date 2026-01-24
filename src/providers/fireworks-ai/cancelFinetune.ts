@@ -18,9 +18,13 @@ export const FireworkCancelFinetuneResponseTransform = (
   return fireworkFinetuneToOpenAIFinetune(response);
 };
 
+/**
+ * Cancels a finetune job on Fireworks AI.
+ * Supports timeout via the optional signal parameter.
+ */
 export const FireworksCancelFinetuneRequestHandler: RequestHandler<
   Params
-> = async ({ requestBody, requestURL, providerOptions, c }) => {
+> = async ({ requestBody, requestURL, providerOptions, c, signal }) => {
   const headers = await FireworksAIAPIConfig.headers({
     c,
     fn: 'cancelFinetune',
@@ -48,6 +52,7 @@ export const FireworksCancelFinetuneRequestHandler: RequestHandler<
       method: 'DELETE',
       headers,
       body: JSON.stringify(requestBody),
+      signal,
     });
 
     if (!request.ok) {

@@ -128,6 +128,10 @@ export interface ProviderAPIConfigs {
   [key: string]: ProviderAPIConfig;
 }
 
+/**
+ * Request handler function type for custom provider endpoints.
+ * @template T - The type of the request body
+ */
 export type RequestHandler<
   T = Params | FormData | ArrayBuffer | ReadableStream,
 > = (Params: {
@@ -136,6 +140,8 @@ export type RequestHandler<
   requestURL: string;
   requestHeaders: Record<string, string>;
   requestBody: T;
+  /** Optional abort signal for timeout handling */
+  signal?: AbortSignal;
 }) => Promise<Response>;
 
 export type RequestHandlers = Partial<

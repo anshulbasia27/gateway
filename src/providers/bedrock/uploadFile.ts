@@ -323,6 +323,10 @@ const getProviderConfig = (modelSlug: string) => {
   return BedrockUploadFileTransformerConfig[provider];
 };
 
+/**
+ * Uploads a file to AWS S3 for Bedrock.
+ * Supports timeout via the optional signal parameter.
+ */
 export const BedrockUploadFileRequestHandler: RequestHandler<
   ReadableStream
 > = async ({
@@ -330,6 +334,7 @@ export const BedrockUploadFileRequestHandler: RequestHandler<
   requestBody,
   requestHeaders,
   c,
+  signal,
 }) => {
   try {
     // get aws credentials and parse provider options

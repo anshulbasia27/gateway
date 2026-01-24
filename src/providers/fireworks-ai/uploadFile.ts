@@ -10,9 +10,20 @@ export const FireworksFileUploadResponseTransform = (response: any) => {
 
 const encoder = new TextEncoder();
 
+/**
+ * Uploads a file to Fireworks AI.
+ * Supports timeout via the optional signal parameter.
+ */
 export const FireworkFileUploadRequestHandler: RequestHandler<
   ReadableStream
-> = async ({ requestURL, requestBody, providerOptions, c, requestHeaders }) => {
+> = async ({
+  requestURL,
+  requestBody,
+  providerOptions,
+  c,
+  requestHeaders,
+  signal,
+}) => {
   const headers = await FireworksAIAPIConfig.headers({
     c,
     providerOptions,
@@ -86,6 +97,7 @@ export const FireworkFileUploadRequestHandler: RequestHandler<
         'Content-Type': 'application/octet-stream',
         'x-goog-content-length-range': `${contentLength},${contentLength}`,
       },
+      signal,
     };
 
     const uploadResponse = await fetch(preSignedUrl, options);

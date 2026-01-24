@@ -8,14 +8,20 @@ const getRowTransform = () => {
   return (row: Record<string, any>) => row;
 };
 
+/**
+ * Retrieves file content from S3.
+ * Supports timeout via the optional signal parameter.
+ */
 export const BedrockRetrieveFileContentRequestHandler = async ({
   c,
   providerOptions,
   requestURL,
+  signal,
 }: {
   c: Context;
   providerOptions: Options;
   requestURL: string;
+  signal?: AbortSignal;
 }) => {
   try {
     // construct the base url and endpoint
@@ -48,6 +54,7 @@ export const BedrockRetrieveFileContentRequestHandler = async ({
     const response = await fetch(url, {
       method: 'GET',
       headers,
+      signal,
     });
 
     if (!response.ok) {

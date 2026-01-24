@@ -114,21 +114,27 @@ export class ProviderContext {
     return Boolean(this.requestHandlers?.[context.endpoint]);
   }
 
+  /**
+   * Gets a request handler for the given context.
+   * @param context - The request context
+   * @returns A function that executes the request handler with an optional abort signal, or undefined if no handler exists
+   */
   getRequestHandler(
     context: RequestContext
-  ): (() => Promise<Response>) | undefined {
+  ): ((signal?: AbortSignal) => Promise<Response>) | undefined {
     const requestHandler = this.requestHandlers?.[context.endpoint];
     if (!requestHandler) {
       return undefined;
     }
 
-    return () =>
+    return (signal?: AbortSignal) =>
       requestHandler({
         c: context.honoContext,
         providerOptions: context.providerOption,
         requestURL: context.honoContext.req.url,
         requestHeaders: context.requestHeaders,
         requestBody: context.requestBody,
+        signal,
       });
   }
 }
