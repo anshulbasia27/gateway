@@ -1,8 +1,6 @@
 import { ResponseService } from '../../../../../src/handlers/services/responseService';
 import { RequestContext } from '../../../../../src/handlers/services/requestContext';
-import { ProviderContext } from '../../../../../src/handlers/services/providerContext';
 import { HooksService } from '../../../../../src/handlers/services/hooksService';
-import { LogsService } from '../../../../../src/handlers/services/logsService';
 import { responseHandler } from '../../../../../src/handlers/responseHandlers';
 import { getRuntimeKey } from 'hono/adapter';
 import {
@@ -12,14 +10,12 @@ import {
 } from '../../../../../src/globals';
 
 // Mock dependencies
-jest.mock('../../responseHandlers');
+jest.mock('../../../../../src/handlers/responseHandlers');
 jest.mock('hono/adapter');
 
 describe('ResponseService', () => {
   let mockRequestContext: RequestContext;
-  let mockProviderContext: ProviderContext;
   let mockHooksService: HooksService;
-  let mockLogsService: LogsService;
   let responseService: ResponseService;
 
   beforeEach(() => {
@@ -36,20 +32,11 @@ describe('ResponseService', () => {
       },
     } as unknown as RequestContext;
 
-    mockProviderContext = {} as ProviderContext;
-
     mockHooksService = {
       areSyncHooksAvailable: false,
     } as unknown as HooksService;
 
-    mockLogsService = {} as LogsService;
-
-    responseService = new ResponseService(
-      mockRequestContext,
-      mockProviderContext,
-      mockHooksService,
-      mockLogsService
-    );
+    responseService = new ResponseService(mockRequestContext, mockHooksService);
 
     // Reset mocks
     jest.clearAllMocks();
@@ -262,9 +249,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const options = {
@@ -326,9 +311,7 @@ describe('ResponseService', () => {
 
       const streamingService = new ResponseService(
         streamingContext,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const mockResponse = new Response('{}');
@@ -445,6 +428,85 @@ describe('ResponseService', () => {
       expect(response.headers.get('content-encoding')).toBe('gzip');
     });
 
+    describe('runtime-specific header handling', () => {
+      it('should remove all streaming headers for Node.js runtime', () => {
+        (getRuntimeKey as jest.Mock).mockReturnValue('node');
+        const response = new Response('{}', {
+          headers: {
+            'content-length': '100',
+            'transfer-encoding': 'chunked',
+            'content-encoding': 'gzip',
+            'content-type': 'application/json',
+          },
+        });
+
+        responseService.updateHeaders(response, undefined, 0);
+
+        // Node.js should remove all three headers
+        expect(response.headers.get('content-length')).toBeNull();
+        expect(response.headers.get('transfer-encoding')).toBeNull();
+        expect(response.headers.get('content-encoding')).toBeNull();
+        // Other headers should be preserved
+        expect(response.headers.get('content-type')).toBe('application/json');
+      });
+
+      it('should only remove content-length for Cloudflare Workers (workerd)', () => {
+        (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
+        const response = new Response('{}', {
+          headers: {
+            'content-length': '100',
+            'transfer-encoding': 'chunked',
+            'content-encoding': 'gzip',
+            'content-type': 'application/json',
+          },
+        });
+
+        responseService.updateHeaders(response, undefined, 0);
+
+        // Workers should only remove content-length
+        expect(response.headers.get('content-length')).toBeNull();
+        // Workers should preserve transfer-encoding and content-encoding
+        expect(response.headers.get('transfer-encoding')).toBe('chunked');
+        expect(response.headers.get('content-encoding')).toBe('gzip');
+        expect(response.headers.get('content-type')).toBe('application/json');
+      });
+
+      it('should only remove content-length for lagon runtime', () => {
+        (getRuntimeKey as jest.Mock).mockReturnValue('lagon');
+        const response = new Response('{}', {
+          headers: {
+            'content-length': '100',
+            'transfer-encoding': 'chunked',
+            'content-encoding': 'br',
+          },
+        });
+
+        responseService.updateHeaders(response, undefined, 0);
+
+        expect(response.headers.get('content-length')).toBeNull();
+        expect(response.headers.get('transfer-encoding')).toBe('chunked');
+        expect(response.headers.get('content-encoding')).toBe('br');
+      });
+
+      it('should handle streaming response headers correctly for Node.js', () => {
+        (getRuntimeKey as jest.Mock).mockReturnValue('node');
+        const response = new Response('data: test\n\n', {
+          headers: {
+            'content-type': 'text/event-stream',
+            'content-length': '12',
+            'transfer-encoding': 'chunked',
+          },
+        });
+
+        responseService.updateHeaders(response, undefined, 0);
+
+        // Streaming responses in Node.js should not have conflicting headers
+        expect(response.headers.get('content-length')).toBeNull();
+        expect(response.headers.get('transfer-encoding')).toBeNull();
+        expect(response.headers.get('content-type')).toBe('text/event-stream');
+      });
+    });
+
     it('should not add cache status header when undefined', () => {
       responseService.updateHeaders(mockResponse, undefined, 0);
 
@@ -461,9 +523,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithPortkey.updateHeaders(mockResponse, 'MISS', 0);
@@ -479,9 +539,7 @@ describe('ResponseService', () => {
 
       const serviceWithEmptyProvider = new ResponseService(
         contextWithEmptyProvider,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithEmptyProvider.updateHeaders(mockResponse, 'MISS', 0);

@@ -4,6 +4,7 @@ import Providers from '../providers';
 import { OpenAIChatCompleteJSONToStreamResponseTransform } from '../providers/openai/chatComplete';
 import { OpenAICompleteJSONToStreamResponseTransform } from '../providers/openai/complete';
 import { Options, Params } from '../types/requestBody';
+import { createStreamingHeaders } from '../utils';
 
 import {
   handleAudioResponse,
@@ -266,11 +267,11 @@ export async function afterRequestHookHandler(
         response.status === 200
       ) {
         // This should not be a major performance bottleneck as it is just copying the headers and using the body as is.
+        // Use createStreamingHeaders to ensure no content-length conflicts with transfer-encoding.
         return new Response(response.body, {
-          ...response,
           status: 246,
           statusText: 'Hooks failed',
-          headers: response.headers,
+          headers: createStreamingHeaders(response.headers),
         });
       }
       return response;

@@ -14,7 +14,11 @@ import { OpenAIChatCompleteResponse } from '../providers/openai/chatComplete';
 import { OpenAICompleteResponse } from '../providers/openai/complete';
 import { endpointStrings } from '../providers/types';
 import { Params } from '../types/requestBody';
-import { getStreamModeSplitPattern, type SplitPatternType } from '../utils';
+import {
+  createStreamingHeaders,
+  getStreamModeSplitPattern,
+  type SplitPatternType,
+} from '../utils';
 
 function readUInt32BE(buffer: Uint8Array, offset: number) {
   return (
@@ -208,6 +212,19 @@ export async function* readStream(
   }
 }
 
+/**
+ * Handles text/plain and text/html responses.
+ *
+ * Note: This function handles complete body responses (not streaming), so it doesn't
+ * need special header sanitization for HTTP/1.1 compliance. The content-length will
+ * be correctly calculated by the HTTP server based on the complete response body.
+ * The sanitizeResponseHeaders() in start-server.ts provides a final safety net
+ * at the Node.js server level if needed.
+ *
+ * @param response - The original response
+ * @param responseTransformer - Optional function to transform the response
+ * @returns A new Response with the text content
+ */
 export async function handleTextResponse(
   response: Response,
   responseTransformer: Function | undefined
@@ -400,15 +417,19 @@ export function handleStreamingMode(
   const isJsonStream = isGoogleCohereOrBedrock || isVertexLlama;
   if (isJsonStream && responseTransformer) {
     return new Response(readable, {
-      ...response,
-      headers: new Headers({
-        ...Object.fromEntries(response.headers),
+      status: response.status,
+      statusText: response.statusText,
+      headers: createStreamingHeaders(response.headers, {
         'content-type': 'text/event-stream',
       }),
     });
   }
 
-  return new Response(readable, response);
+  return new Response(readable, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: createStreamingHeaders(response.headers),
+  });
 }
 
 export async function handleJSONToStreamResponse(
@@ -466,8 +487,7 @@ export async function handleJSONToStreamResponse(
   }
 
   return new Response(readable, {
-    headers: new Headers({
-      ...Object.fromEntries(response.headers),
+    headers: createStreamingHeaders(response.headers, {
       'content-type': CONTENT_TYPES.EVENT_STREAM,
     }),
     status: response.status,

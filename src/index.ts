@@ -15,6 +15,7 @@ import { getRuntimeKey } from 'hono/adapter';
 import { requestValidator } from './middlewares/requestValidator';
 import { hooks } from './middlewares/hooks';
 import { memoryCache } from './middlewares/cache';
+import { responseHeaderSanitizer } from './middlewares/responseHeaderSanitizer';
 
 // Handlers
 import { proxyHandler } from './handlers/proxyHandler';
@@ -61,6 +62,15 @@ app.use('*', (c, next) => {
   }
   return compress()(c, next);
 });
+
+/**
+ * Middleware to sanitize response headers for Node.js runtime.
+ * Ensures HTTP/1.1 compliance by removing content-length when transfer-encoding is present.
+ * This fixes client-side errors caused by invalid HTTP response structure.
+ */
+if (runtime === 'node') {
+  app.use('*', responseHeaderSanitizer());
+}
 
 if (runtime === 'node') {
   app.use('*', async (c: Context, next) => {

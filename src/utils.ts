@@ -11,6 +11,14 @@ import {
 } from './globals';
 import { Params } from './types/requestBody';
 
+// Re-export HTTP header utilities from centralized location
+// for backward compatibility
+export {
+  STREAMING_HEADERS_TO_REMOVE,
+  createStreamingHeaders,
+  sanitizeResponseHeaders,
+} from './utils/httpHeaders';
+
 export const getStreamModeSplitPattern = (
   proxyProvider: string,
   requestURL: string
