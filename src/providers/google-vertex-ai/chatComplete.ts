@@ -54,6 +54,7 @@ import {
   getMimeType,
   googleTools,
   recursivelyDeleteUnsupportedParameters,
+  transformGeminiToolParameters,
   transformGoogleTools,
   transformInputAudioPart,
   transformVertexLogprobs,
@@ -291,6 +292,11 @@ export const VertexGoogleChatCompleteConfig: ProviderConfig = {
           if (googleTools.includes(tool.function.name)) {
             tools.push(...transformGoogleTools(tool));
           } else {
+            if (tool.function?.parameters) {
+              tool.function.parameters = transformGeminiToolParameters(
+                tool.function.parameters
+              );
+            }
             functionDeclarations.push(tool.function);
           }
         }
