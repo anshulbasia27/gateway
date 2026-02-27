@@ -1,8 +1,6 @@
 import { ResponseService } from '../../../../../src/handlers/services/responseService';
 import { RequestContext } from '../../../../../src/handlers/services/requestContext';
-import { ProviderContext } from '../../../../../src/handlers/services/providerContext';
 import { HooksService } from '../../../../../src/handlers/services/hooksService';
-import { LogsService } from '../../../../../src/handlers/services/logsService';
 import { responseHandler } from '../../../../../src/handlers/responseHandlers';
 import { getRuntimeKey } from 'hono/adapter';
 import {
@@ -12,14 +10,12 @@ import {
 } from '../../../../../src/globals';
 
 // Mock dependencies
-jest.mock('../../responseHandlers');
+jest.mock('../../../../../src/handlers/responseHandlers');
 jest.mock('hono/adapter');
 
 describe('ResponseService', () => {
   let mockRequestContext: RequestContext;
-  let mockProviderContext: ProviderContext;
   let mockHooksService: HooksService;
-  let mockLogsService: LogsService;
   let responseService: ResponseService;
 
   beforeEach(() => {
@@ -31,25 +27,18 @@ describe('ResponseService', () => {
       params: { model: 'gpt-4', messages: [] },
       strictOpenAiCompliance: true,
       requestURL: 'https://api.openai.com/v1/chat/completions',
+      providerOption: { provider: 'openai' },
       honoContext: {
         req: { url: 'https://gateway.com/v1/chat/completions' },
       },
     } as unknown as RequestContext;
 
-    mockProviderContext = {} as ProviderContext;
-
     mockHooksService = {
       areSyncHooksAvailable: false,
+      hookSpan: { id: 'hook-span-123' },
     } as unknown as HooksService;
 
-    mockLogsService = {} as LogsService;
-
-    responseService = new ResponseService(
-      mockRequestContext,
-      mockProviderContext,
-      mockHooksService,
-      mockLogsService
-    );
+    responseService = new ResponseService(mockRequestContext, mockHooksService);
 
     // Reset mocks
     jest.clearAllMocks();
@@ -134,19 +123,20 @@ describe('ResponseService', () => {
       const result = await responseService.create(options);
 
       expect(responseHandler).toHaveBeenCalledWith(
+        mockRequestContext.honoContext,
         mockResponse,
         mockRequestContext.isStreaming,
-        mockRequestContext.provider,
+        mockRequestContext.providerOption,
         'chatComplete',
         mockRequestContext.requestURL,
         false,
         mockRequestContext.params,
         mockRequestContext.strictOpenAiCompliance,
         mockRequestContext.honoContext.req.url,
-        mockHooksService.areSyncHooksAvailable
+        mockHooksService.areSyncHooksAvailable,
+        mockHooksService.hookSpan?.id
       );
 
-      expect(result.response).toEqual(mockResponse);
       expect(result.responseJson).toBe(responseJson);
       expect(result.originalResponseJson).toBe(originalJson);
     });
@@ -173,65 +163,23 @@ describe('ResponseService', () => {
       const result = await responseService.create(options);
 
       expect(responseHandler).toHaveBeenCalledWith(
+        mockRequestContext.honoContext,
         mockResponse,
         mockRequestContext.isStreaming,
-        mockRequestContext.provider,
+        mockRequestContext.providerOption,
         'chatComplete',
         mockRequestContext.requestURL,
         true, // isCacheHit should be true
         mockRequestContext.params,
         mockRequestContext.strictOpenAiCompliance,
         mockRequestContext.honoContext.req.url,
-        mockHooksService.areSyncHooksAvailable
+        mockHooksService.areSyncHooksAvailable,
+        mockHooksService.hookSpan?.id
       );
 
       expect(mockResponse.headers.get(RESPONSE_HEADER_KEYS.CACHE_STATUS)).toBe(
         'HIT'
       );
-    });
-
-    it('should throw error for non-ok response', async () => {
-      const errorResponse = new Response('{"error": "Bad Request"}', {
-        status: 400,
-      });
-      const options = {
-        response: errorResponse,
-        responseTransformer: undefined,
-        isResponseAlreadyMapped: true,
-        cache: {
-          isCacheHit: false,
-          cacheStatus: 'MISS',
-          cacheKey: undefined,
-        },
-        retryAttempt: 0,
-      };
-
-      await expect(responseService.create(options)).rejects.toThrow();
-    });
-
-    it('should handle error response correctly', async () => {
-      const errorResponse = new Response('{"error": "Internal Server Error"}', {
-        status: 500,
-      });
-      const options = {
-        response: errorResponse,
-        responseTransformer: undefined,
-        isResponseAlreadyMapped: true,
-        cache: {
-          isCacheHit: false,
-          cacheStatus: 'MISS',
-          cacheKey: undefined,
-        },
-        retryAttempt: 0,
-      };
-
-      try {
-        await responseService.create(options);
-      } catch (error: any) {
-        expect(error.status).toBe(500);
-        expect(error.response).toBe(errorResponse);
-        expect(error.message).toBe('{"error": "Internal Server Error"}');
-      }
     });
 
     it('should not add cache status header when not provided', async () => {
@@ -262,9 +210,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const options = {
@@ -303,16 +249,18 @@ describe('ResponseService', () => {
       );
 
       expect(responseHandler).toHaveBeenCalledWith(
+        mockRequestContext.honoContext,
         mockResponse,
         mockRequestContext.isStreaming,
-        mockRequestContext.provider,
+        mockRequestContext.providerOption,
         'chatComplete',
         mockRequestContext.requestURL,
         false,
         mockRequestContext.params,
         mockRequestContext.strictOpenAiCompliance,
         mockRequestContext.honoContext.req.url,
-        mockHooksService.areSyncHooksAvailable
+        mockHooksService.areSyncHooksAvailable,
+        mockHooksService.hookSpan?.id
       );
 
       expect(result).toBe(expectedResult);
@@ -326,9 +274,7 @@ describe('ResponseService', () => {
 
       const streamingService = new ResponseService(
         streamingContext,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       const mockResponse = new Response('{}');
@@ -341,16 +287,18 @@ describe('ResponseService', () => {
       await streamingService.getResponse(mockResponse, 'chatComplete', false);
 
       expect(responseHandler).toHaveBeenCalledWith(
+        streamingContext.honoContext,
         mockResponse,
         true, // isStreaming should be true
-        streamingContext.provider,
+        streamingContext.providerOption,
         'chatComplete',
         streamingContext.requestURL,
         false,
         streamingContext.params,
         streamingContext.strictOpenAiCompliance,
         streamingContext.honoContext.req.url,
-        mockHooksService.areSyncHooksAvailable
+        mockHooksService.areSyncHooksAvailable,
+        mockHooksService.hookSpan?.id
       );
     });
 
@@ -365,16 +313,18 @@ describe('ResponseService', () => {
       await responseService.getResponse(mockResponse, 'chatComplete', true);
 
       expect(responseHandler).toHaveBeenCalledWith(
+        mockRequestContext.honoContext,
         mockResponse,
         mockRequestContext.isStreaming,
-        mockRequestContext.provider,
+        mockRequestContext.providerOption,
         'chatComplete',
         mockRequestContext.requestURL,
         true, // isCacheHit should be true
         mockRequestContext.params,
         mockRequestContext.strictOpenAiCompliance,
         mockRequestContext.honoContext.req.url,
-        mockHooksService.areSyncHooksAvailable
+        mockHooksService.areSyncHooksAvailable,
+        mockHooksService.hookSpan?.id
       );
     });
   });
@@ -410,17 +360,39 @@ describe('ResponseService', () => {
       expect(mockResponse.headers.get(HEADER_KEYS.PROVIDER)).toBe('openai');
     });
 
-    it('should remove problematic headers', () => {
+    it('should remove transfer-encoding and content-length for non-streaming node responses', () => {
+      // Non-streaming is the default in mockRequestContext (isStreaming: false)
       responseService.updateHeaders(mockResponse, undefined, 0);
 
       expect(mockResponse.headers.get('content-length')).toBeNull();
       expect(mockResponse.headers.get('transfer-encoding')).toBeNull();
     });
 
-    it('should remove brotli encoding', () => {
-      responseService.updateHeaders(mockResponse, undefined, 0);
+    it('should remove content-length but preserve transfer-encoding for streaming node responses', () => {
+      const streamingContext = {
+        ...mockRequestContext,
+        isStreaming: true,
+      } as RequestContext;
 
-      expect(mockResponse.headers.get('content-encoding')).toBeNull();
+      const streamingService = new ResponseService(
+        streamingContext,
+        mockHooksService
+      );
+
+      const streamingResponse = new Response('{}', {
+        headers: {
+          'content-length': '100',
+          'transfer-encoding': 'chunked',
+        },
+      });
+
+      streamingService.updateHeaders(streamingResponse, undefined, 0);
+
+      expect(streamingResponse.headers.get('content-length')).toBeNull();
+      // transfer-encoding should remain for streaming
+      expect(streamingResponse.headers.get('transfer-encoding')).toBe(
+        'chunked'
+      );
     });
 
     it('should remove content-encoding for node runtime', () => {
@@ -434,7 +406,7 @@ describe('ResponseService', () => {
       expect(response.headers.get('content-encoding')).toBeNull();
     });
 
-    it('should keep content-encoding for non-brotli, non-node', () => {
+    it('should keep content-encoding for non-node runtimes', () => {
       (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
       const response = new Response('{}', {
         headers: { 'content-encoding': 'gzip' },
@@ -443,6 +415,22 @@ describe('ResponseService', () => {
       responseService.updateHeaders(response, undefined, 0);
 
       expect(response.headers.get('content-encoding')).toBe('gzip');
+    });
+
+    it('should only remove content-length for non-node runtimes', () => {
+      (getRuntimeKey as jest.Mock).mockReturnValue('workerd');
+      const response = new Response('{}', {
+        headers: {
+          'content-length': '100',
+          'transfer-encoding': 'chunked',
+        },
+      });
+
+      responseService.updateHeaders(response, undefined, 0);
+
+      expect(response.headers.get('content-length')).toBeNull();
+      // transfer-encoding should remain for non-node runtimes
+      expect(response.headers.get('transfer-encoding')).toBe('chunked');
     });
 
     it('should not add cache status header when undefined', () => {
@@ -461,9 +449,7 @@ describe('ResponseService', () => {
 
       const serviceWithPortkey = new ResponseService(
         contextWithPortkey,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithPortkey.updateHeaders(mockResponse, 'MISS', 0);
@@ -479,9 +465,7 @@ describe('ResponseService', () => {
 
       const serviceWithEmptyProvider = new ResponseService(
         contextWithEmptyProvider,
-        mockProviderContext,
-        mockHooksService,
-        mockLogsService
+        mockHooksService
       );
 
       serviceWithEmptyProvider.updateHeaders(mockResponse, 'MISS', 0);

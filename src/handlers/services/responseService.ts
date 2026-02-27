@@ -101,7 +101,7 @@ export class ResponseService {
     cacheStatus: string | undefined,
     retryAttempt: number
   ) {
-    // Append headers directly
+    // Append custom gateway headers
     response.headers.append(
       RESPONSE_HEADER_KEYS.LAST_USED_OPTION_INDEX,
       this.context.index.toString()
@@ -123,12 +123,30 @@ export class ResponseService {
       response.headers.append(HEADER_KEYS.PROVIDER, this.context.provider);
     }
 
-    // Remove headers directly
-    if (getRuntimeKey() == 'node') {
+    // Remove headers to ensure HTTP/1.1 compliance.
+    // According to HTTP/1.1 RFC 7230 Section 3.3.2:
+    // "A sender MUST NOT send a Content-Length header field in any message
+    // that contains a Transfer-Encoding header field."
+    //
+    // For Node.js runtime, we handle streaming and non-streaming responses
+    // differently to ensure proper HTTP compliance:
+    // - Streaming: remove content-length, allow transfer-encoding for chunked responses
+    // - Non-streaming: remove transfer-encoding, allow content-length to be set by HTTP layer
+    if (getRuntimeKey() === 'node') {
       response.headers.delete('content-encoding');
-      response.headers.delete('transfer-encoding');
+
+      if (this.context.isStreaming) {
+        // Streaming responses: remove content-length, allow transfer-encoding
+        response.headers.delete('content-length');
+      } else {
+        // Non-streaming responses: remove transfer-encoding and content-length
+        // The HTTP layer will set the correct content-length based on body size
+        response.headers.delete('transfer-encoding');
+        response.headers.delete('content-length');
+      }
+    } else {
+      response.headers.delete('content-length');
     }
-    response.headers.delete('content-length');
 
     return response;
   }

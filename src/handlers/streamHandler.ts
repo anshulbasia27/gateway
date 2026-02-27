@@ -15,6 +15,35 @@ import { OpenAICompleteResponse } from '../providers/openai/complete';
 import { endpointStrings } from '../providers/types';
 import { Params } from '../types/requestBody';
 import { getStreamModeSplitPattern, type SplitPatternType } from '../utils';
+import { getRuntimeKey } from 'hono/adapter';
+
+/**
+ * Creates headers for non-streaming JSON responses with proper HTTP/1.1 compliance.
+ * According to HTTP/1.1 spec, content-length MUST NOT be present when
+ * transfer-encoding is set, and vice versa.
+ *
+ * For non-streaming responses with known body size, we remove transfer-encoding
+ * to allow the HTTP layer to set content-length appropriately.
+ */
+export function createNonStreamingResponseHeaders(
+  originalHeaders: Headers
+): Headers {
+  const newHeaders = new Headers();
+
+  // Headers to exclude for proper HTTP/1.1 compliance in non-streaming responses
+  const headersToExclude =
+    getRuntimeKey() === 'node'
+      ? ['transfer-encoding', 'content-encoding', 'content-length']
+      : ['content-length'];
+
+  for (const [key, value] of originalHeaders) {
+    if (!headersToExclude.includes(key.toLowerCase())) {
+      newHeaders.set(key, value);
+    }
+  }
+
+  return newHeaders;
+}
 
 function readUInt32BE(buffer: Uint8Array, offset: number) {
   return (
@@ -219,13 +248,13 @@ export async function handleTextResponse(
       { 'html-message': text },
       response.status
     );
+    // Use filtered headers for HTTP/1.1 compliance
+    const filteredHeaders = createNonStreamingResponseHeaders(response.headers);
+    filteredHeaders.set('content-type', 'application/json');
     return new Response(JSON.stringify(transformedText), {
-      ...response,
       status: response.status,
-      headers: new Headers({
-        ...Object.fromEntries(response.headers),
-        'content-type': 'application/json',
-      }),
+      statusText: response.statusText,
+      headers: filteredHeaders,
     });
   }
 
@@ -270,15 +299,28 @@ export async function handleNonStreamingMode(
       gatewayRequest
     );
   } else if (!areSyncHooksAvailable) {
+    // For non-streaming responses where hooks are not needed, we still need to
+    // read the body as text rather than passing it as a stream. This ensures
+    // that the Node.js HTTP server won't use chunked transfer encoding, which
+    // could conflict with Content-Length headers from the upstream provider.
+    const bodyText = await response.text();
     return {
-      response: new Response(response.body, response),
+      response: new Response(bodyText, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: createNonStreamingResponseHeaders(response.headers),
+      }),
       json: null,
       originalResponseBodyJson,
     };
   }
 
   return {
-    response: new Response(JSON.stringify(responseBodyJson), response),
+    response: new Response(JSON.stringify(responseBodyJson), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: createNonStreamingResponseHeaders(response.headers),
+    }),
     json: responseBodyJson as Record<string, any>,
     // Send original response if transformer exists
     ...(responseTransformer && { originalResponseBodyJson }),
