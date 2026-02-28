@@ -123,12 +123,22 @@ export class ResponseService {
       response.headers.append(HEADER_KEYS.PROVIDER, this.context.provider);
     }
 
-    // Remove headers directly
-    if (getRuntimeKey() == 'node') {
+    // Remove headers that can conflict with how the HTTP server handles the response body.
+    // Per HTTP/1.1 specification (RFC 7230), content-length and transfer-encoding headers
+    // MUST NOT both be present in the same message. When running on Node.js, we delete both
+    // headers and let the Node.js HTTP server determine the appropriate transfer mechanism
+    // based on how the response body is written (buffered vs streamed).
+    if (getRuntimeKey() === 'node') {
       response.headers.delete('content-encoding');
+      // Delete both content-length and transfer-encoding to prevent HTTP/1.1 specification
+      // violations where both headers might be present simultaneously
       response.headers.delete('transfer-encoding');
+      response.headers.delete('content-length');
+    } else {
+      // For non-Node.js runtimes (e.g., Cloudflare Workers), only delete content-length
+      // as those environments handle transfer encoding differently
+      response.headers.delete('content-length');
     }
-    response.headers.delete('content-length');
 
     return response;
   }

@@ -21,6 +21,23 @@ import { anthropicMessagesJsonToStreamGenerator } from '../providers/anthropic-b
 import { endpointStrings } from '../providers/types';
 
 /**
+ * Creates response headers that are HTTP/1.1 compliant by removing
+ * content-length and transfer-encoding headers. This prevents having
+ * both headers present simultaneously which violates HTTP/1.1 specs.
+ */
+function createCleanResponseHeaders(originalHeaders: Headers): Headers {
+  const newHeaders = new Headers();
+  for (const [key, value] of originalHeaders.entries()) {
+    const lowerKey = key.toLowerCase();
+    // Skip content-length and transfer-encoding to let Node.js handle them
+    if (lowerKey !== 'content-length' && lowerKey !== 'transfer-encoding') {
+      newHeaders.set(key, value);
+    }
+  }
+  return newHeaders;
+}
+
+/**
  * Handles various types of responses based on the specified parameters
  * and returns a mapped response
  * @param {Response} response - The HTTP response received from LLM.
@@ -160,7 +177,11 @@ export async function responseHandler(
 
   if (!responseContentType && response.status === 204) {
     return {
-      response: new Response(response.body, response),
+      response: new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: createCleanResponseHeaders(response.headers),
+      }),
       responseJson: null,
     };
   }
@@ -213,10 +234,15 @@ function createHookResponse(
     }),
   };
 
+  // Use provided headers or clean headers from base response
+  const responseHeaders = options.headers
+    ? new Headers(options.headers)
+    : createCleanResponseHeaders(baseResponse.headers);
+
   return new Response(JSON.stringify(responseBody), {
     status: options.status || baseResponse.status,
     statusText: options.statusText || baseResponse.statusText,
-    headers: options.headers || baseResponse.headers,
+    headers: responseHeaders,
   });
 }
 
@@ -267,10 +293,9 @@ export async function afterRequestHookHandler(
       ) {
         // This should not be a major performance bottleneck as it is just copying the headers and using the body as is.
         return new Response(response.body, {
-          ...response,
           status: 246,
           statusText: 'Hooks failed',
-          headers: response.headers,
+          headers: createCleanResponseHeaders(response.headers),
         });
       }
       return response;

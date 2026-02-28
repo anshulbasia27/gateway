@@ -426,6 +426,8 @@ export interface Tool extends PromptCache {
  */
 export interface Params {
   model?: string;
+  /** Bytez API version (defaults to 2) */
+  version?: number;
   prompt?: string | string[];
   messages?: Message[];
   functions?: Function[];
