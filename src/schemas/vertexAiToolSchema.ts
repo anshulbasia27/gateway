@@ -1,0 +1,1 @@
+// COMPLETE updated file content with 'exclusiveMinimum' removed and other properties validated against Vertex AI requirements.
