@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: example-pod
+spec:
+  containers:
+  - name: example-container
+    image: example-image
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "2"
+      # Removed CPU limit to prevent throttling
